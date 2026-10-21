@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UK Flood Sandbox</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;650&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16303a;--muted:#5d7179;--panel:#fbfcfb;--line:#d7dfe0;--water:#185f9e;--rain:#8fb3c9;--stone:#b07a2a;--warn:#9a4b12}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;font-family:"Public Sans",system-ui,sans-serif;color:var(--ink);background:#e9eeee}
+#map{position:absolute;inset:0}
+.leaflet-container{background:#e9eeee;font-family:inherit}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(22,48,58,.08)}
+.card{position:absolute;top:14px;left:14px;z-index:500;width:min(340px,calc(100% - 28px));padding:16px 18px 14px;max-height:calc(100% - 200px);overflow:auto}
+h1{font-size:19px;line-height:1.25;font-weight:650;margin:0 0 4px}
+.runname{font-size:13.5px;line-height:1.45;color:var(--muted);margin:0 0 12px}
+dl{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin:0 0 12px}
+dt{font-size:12px;color:var(--muted)} dd{margin:2px 0 0;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:10px}
+.seg button{flex:1;border:0;background:transparent;padding:7px 4px;font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+label.chk{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.linkbtn{border:0;background:none;font:inherit;font-size:13px;color:var(--water);cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.legend{margin-top:12px}
+.ramp{height:10px;border-radius:3px}
+.ticks{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+.primary{display:block;width:100%;margin-top:14px;border:0;border-radius:8px;background:var(--ink);color:#fff;font:inherit;font-weight:600;font-size:14.5px;padding:11px 14px;cursor:pointer}
+.primary:hover{background:#21434f}
+.primary:disabled{opacity:.5;cursor:default}
+.ghost{border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:14px;padding:10px 14px;cursor:pointer}
+details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;font-size:12.5px;line-height:1.5;color:var(--muted)}
+summary{cursor:pointer;color:var(--ink);font-weight:500}
+details ul{padding-left:18px;margin:8px 0 0} details li{margin-bottom:4px}
+
+.dock{position:absolute;left:14px;right:14px;bottom:14px;z-index:500;padding:12px 16px 10px;display:grid;grid-template-columns:auto auto 1fr;gap:6px 18px;align-items:center}
+.play{width:44px;height:44px;border-radius:50%;border:0;background:var(--ink);color:#fff;cursor:pointer;display:grid;place-items:center}
+.play svg{width:18px;height:18px}
+.clock{font-size:34px;font-weight:650;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1;min-width:92px}
+.clock small{display:block;font-size:12px;font-weight:400;color:var(--muted);letter-spacing:0;margin-top:4px}
+.chartwrap{position:relative;min-width:0}
+#chart{width:100%;height:84px;display:block;cursor:pointer}
+input[type=range]{width:100%;accent-color:var(--stone)}
+.key{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11.5px;color:var(--muted);margin-top:2px}
+.key i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
+
+dialog{border:0;padding:0;border-radius:12px;width:min(560px,calc(100% - 24px));max-height:calc(100% - 24px);color:var(--ink);background:var(--panel);box-shadow:0 18px 50px rgba(22,48,58,.25)}
+dialog::backdrop{background:rgba(22,48,58,.35)}
+.dlg{padding:20px 22px 18px}
+.dlg h2{margin:0 0 4px;font-size:20px;font-weight:650}
+.dlg .sub{margin:0 0 16px;font-size:13.5px;color:var(--muted);line-height:1.5}
+.field{margin-bottom:16px}
+.field>.lbl{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+.field .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.inline{display:flex;gap:10px;align-items:center}
+.num{width:96px;font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+select.num{width:auto}
+.unit{font-size:13px;color:var(--muted)}
+.shapes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.shapes label{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);border-radius:8px;padding:8px 4px 6px;font-size:11.5px;color:var(--muted);cursor:pointer;text-align:center;background:#fff}
+.shapes input{position:absolute;opacity:0}
+.shapes label:has(input:checked){border-color:var(--ink);color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.shapes label:has(input:focus-visible){outline:2px solid var(--stone);outline-offset:2px}
+.shapes svg{width:44px;height:22px}
+.opts{display:grid;gap:8px}
+.opt{display:flex;align-items:center;gap:10px;font-size:14px;flex-wrap:wrap}
+.opt .num{width:80px;padding:5px 8px;font-size:14px}
+.preview{border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px 12px;margin:4px 0 14px}
+#hyeto{width:100%;height:64px;display:block}
+.pvstats{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.pvstats b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.msg{font-size:13px;line-height:1.45;padding:8px 10px;border-radius:7px;margin-bottom:12px}
+.msg.warn{background:#fbf1e6;color:var(--warn)}
+.msg.err{background:#fbe9e7;color:#9b1c1c}
+.actions{display:flex;justify-content:flex-end;gap:10px}
+.actions .primary{width:auto;margin:0;padding:10px 18px}
+
+.bar{height:10px;border-radius:6px;background:#e3eaeb;overflow:hidden;margin:18px 0 10px}
+.bar>div{height:100%;width:0;background:var(--water);transition:width .4s ease}
+.prog{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.res{display:grid;grid-template-columns:150px 1fr;gap:16px;margin-bottom:14px}
+.thumb{position:relative;width:150px;aspect-ratio:900/1190;border-radius:8px;overflow:hidden;background:#f0f3f3;border:1px solid var(--line)}
+.thumb img{position:absolute;inset:0;width:100%;height:100%}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:5px 0;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left;font-weight:400;color:var(--muted)}
+thead th{font-size:12px;color:var(--muted);font-weight:500}
+td.you{font-weight:600}
+.budget{margin:4px 0 14px}
+.budget .lbl{font-size:13px;font-weight:600;margin-bottom:6px}
+.stack{display:flex;height:14px;border-radius:4px;overflow:hidden;margin-bottom:4px}
+.stack span{display:block;height:100%}
+.bkey{display:flex;flex-wrap:wrap;gap:3px 14px;font-size:12px;color:var(--muted)}
+.bkey i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.note{font-size:12px;color:var(--muted);line-height:1.5;margin:0 0 14px}
+
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--stone);outline-offset:2px}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 16px;overflow-x:auto}
+.tabs button{border:0;background:none;font:inherit;font-size:13.5px;color:var(--muted);padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;position:relative}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.tabs button i{display:none;width:6px;height:6px;border-radius:50%;background:var(--stone);position:absolute;top:7px;right:3px}
+.tabs button.on i{display:block}
+.tabpanel{min-height:236px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.grid2 label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+.grid2 label span{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+.grid2 .num{width:84px;padding:6px 8px;font-size:14px}
+.field.dim{opacity:.45;pointer-events:none}
+label.chk.big{font-size:14px;color:var(--ink)}
+.numout{font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+.pickbar[hidden],.drawbar[hidden]{display:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.arearow{display:flex;gap:8px;margin:8px 0 4px}
+.areasel{flex:1;width:auto;min-width:0;font-size:14px;padding:6px 8px}
+.ghost.sm{padding:6px 10px;font-size:13px;white-space:nowrap}
+.areameta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:8px;min-height:16px}
+.drawbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;padding:14px 16px 12px;width:min(560px,calc(100% - 24px))}
+.drow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg.mini{margin:0}
+.seg.mini button{padding:6px 10px;flex:none}
+.dhint{font-size:13px;color:var(--muted);margin:10px 0 8px;line-height:1.45}
+.budget-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;margin-bottom:12px}
+.bdot{flex:none;width:10px;height:10px;border-radius:50%;background:#c4cfd1;margin-top:4px}
+.budget-line.ok .bdot{background:#4f8a4a} .budget-line.amber .bdot{background:#c98a1b} .budget-line.red .bdot{background:#b3261e}
+.drawing #map{cursor:crosshair}
+#view3d{position:absolute;inset:0;z-index:450;background:linear-gradient(#dfe7ec,#eef1f0 60%,#e6e9e6)}
+#view3d canvas{display:block;cursor:grab}
+.viewbar{position:absolute;top:14px;right:14px;z-index:550;padding:8px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:min(520px,calc(100% - 380px))}
+.v3only{display:flex;gap:6px;align-items:center}
+.v3note{font-size:12px;color:var(--muted);flex-basis:100%}
+.v3note:empty{display:none}
+.rtabs{margin:0 0 12px}
+.rtabs button{border:0;background:none;padding:8px 12px;font:inherit;font-size:14px;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
+.rtabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.rtable{width:100%;border-collapse:collapse;font-size:14px}
+.rtable td{padding:6px 4px;border-bottom:1px solid var(--line)}
+.rtable td:not(:first-child){text-align:right;white-space:nowrap}
+.rpanel .empty{color:var(--muted);font-size:13.5px}
+#resStatus:empty{display:none}
+.defpanel{position:absolute;right:14px;top:118px;z-index:560;width:300px;padding:14px;max-height:calc(100% - 330px);overflow:auto}
+.defpanel h3{font-size:15px;margin:0 0 4px}
+.defadd{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.defparams{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px}
+.defparams:empty{display:none}
+.defhint{font-size:12.5px;color:#8e3b46;margin-top:8px}
+.defhint:empty{display:none}
+.deflist{list-style:none;margin:10px 0 0;padding:0;font-size:13px}
+.deflist li{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 0;border-top:1px solid var(--line)}
+.deflist .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.in3d .leaflet-control-zoom{display:none}
+@media (max-width:760px){.viewbar{top:auto;bottom:250px;right:14px;max-width:calc(100% - 28px)}}
+.full{grid-column:1/-1;margin:0}
+.rivrow{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.rivrow:first-child{padding-top:0}
+.rivname{font-size:14px;font-weight:600} .rivname span{font-weight:400;color:var(--muted);font-size:12.5px;margin-left:4px}
+.rivrow .flows{grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.rivrow .flows label{display:flex;align-items:center;gap:6px}
+.rivrow .num{width:76px;padding:5px 8px;font-size:14px}
+.rivrow .dim{opacity:.4;pointer-events:none}
+.pickbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;padding:10px 16px;font-size:14px;display:flex;gap:12px;align-items:center}
+.picking #map{cursor:crosshair}
+@media (max-width:760px){
+  .grid2 .num{width:70px} .tabpanel{min-height:0} .tabs button{padding:8px 9px}
+  .card{padding:12px 14px;max-height:46%} dl{grid-template-columns:repeat(4,auto);gap:4px 10px} dd{font-size:14px}
+  .dock{grid-template-columns:auto 1fr;bottom:40px} .chartwrap{grid-column:1/-1} .clock{font-size:26px}
+  .shapes{grid-template-columns:repeat(3,1fr)} .res{grid-template-columns:1fr} .thumb{width:120px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Flood map"></div>
+<div id="view3d" role="region" aria-label="3D view of the area" hidden></div>
+<div class="panel defpanel" id="defPanel" hidden>
+  <h3>Your flood defences</h3>
+  <p class="unit">Draw them on the 3D model, then run a scenario: they are built into that run's ground, and the area itself is not changed.</p>
+  <div class="unit" style="margin-top:8px">Keep water out or store it</div>
+  <div class="defadd">
+    <button type="button" class="ghost sm" data-add="wall">+ Wall</button>
+    <button type="button" class="ghost sm" data-add="embankment">+ Embankment</button>
+    <button type="button" class="ghost sm" data-add="barrier">+ Barrier</button>
+    <button type="button" class="ghost sm" data-add="basin">+ Basin</button>
+    <button type="button" class="ghost sm" data-add="kerb">+ Raised kerb</button>
+    <button type="button" class="ghost sm" data-add="deepen">+ Deepen channel</button>
+  </div>
+  <div class="unit">Store, pump or close off</div>
+  <div class="defadd">
+    <button type="button" class="ghost sm" data-add="tank">+ Storage tank</button>
+    <button type="button" class="ghost sm" data-add="pump">+ Pump</button>
+    <button type="button" class="ghost sm" data-add="gate">+ Flood gate</button>
+  </div>
+  <div class="unit">Soak up or slow the rain</div>
+  <div class="defadd">
+    <button type="button" class="ghost sm" data-add="permeable">+ Permeable surface</button>
+    <button type="button" class="ghost sm" data-add="raingarden">+ Rain garden</button>
+    <button type="button" class="ghost sm" data-add="swale">+ Swale</button>
+    <button type="button" class="ghost sm" data-add="trees">+ Trees</button>
+    <button type="button" class="ghost sm" data-add="greenroof">+ Green roofs</button>
+  </div>
+  <div class="defparams" id="defParams"></div>
+  <div class="defhint" id="defHint"></div>
+  <ul class="deflist" id="defList"></ul>
+</div>
+<div class="viewbar panel" id="viewbar">
+  <div class="seg mini" role="group" aria-label="View">
+    <button type="button" data-view="3d" aria-pressed="false">3D</button>
+    <button type="button" data-view="map" aria-pressed="true">Map</button>
+  </div>
+  <div class="v3only" id="v3tools">
+    <button type="button" class="ghost sm" id="rotL" aria-label="Rotate left">&#8634;</button>
+    <button type="button" class="ghost sm" id="rotR" aria-label="Rotate right">&#8635;</button>
+    <label class="unit" style="display:flex;gap:6px;align-items:center" title="Exaggerates the ground only; buildings keep their real heights">Ground
+      <select class="num" id="exag" style="width:auto;padding:4px 6px;font-size:13px"><option value="1" selected>×1</option><option value="2">×2</option><option value="3">×3</option><option value="5">×5</option></select></label>
+    <label class="chk"><input type="checkbox" id="treesOn" checked> Trees</label>
+    <button type="button" class="ghost sm" id="defBtn" aria-expanded="false">Defences</button>
+    <button type="button" class="linkbtn" id="resetV">Reset</button>
+  </div>
+  <div class="v3note" id="v3note"></div>
+</div>
+
+<section class="card panel" aria-label="Current simulation">
+  <h1>UK Flood Sandbox</h1>
+  <div class="arearow">
+    <label class="sr" for="areaSel">Area</label>
+    <select id="areaSel" class="num areasel"></select>
+    <button class="ghost sm" id="newArea">New area</button>
+  </div>
+  <div class="areameta"><span id="areaInfo"></span><button class="linkbtn" id="delArea" hidden>Delete area</button></div>
+  <p class="runname" id="runname">Loading…</p>
+  <dl id="stats"></dl>
+  <div class="seg" role="group" aria-label="Map layer">
+    <button data-layer="time" aria-pressed="true">Depth over time</button>
+    <button data-layer="maxd" aria-pressed="false">Maximum depth</button>
+    <button data-layer="speed" aria-pressed="false">Maximum speed</button>
+    <button data-layer="hazard" aria-pressed="false" title="Hazard to people (Defra/EA method): depth and speed together">Hazard</button>
+    <button data-layer="ea" aria-pressed="false" title="The Environment Agency's national surface-water flood map (England)">EA map</button>
+    <button data-layer="diff" aria-pressed="false" id="diffBtn" hidden title="Change in maximum depth against the run chosen under Results, Compare with (3D view)">Difference</button>
+  </div>
+  <div class="row">
+    <label class="chk"><input type="checkbox" id="shade" checked> Terrain shading</label>
+    <button class="linkbtn" id="showResults" hidden>Results</button>
+  </div>
+  <div class="legend" id="legend"></div>
+  <button class="primary" id="newStorm">Design a scenario</button>
+  <details>
+    <summary>About the model</summary>
+    <ul>
+      <li>OpenSWMM 6 2D, running on this computer. A 5 or 10 m grid split into triangles; buildings from OpenStreetMap are walls.</li>
+      <li>Terrain: Environment Agency LIDAR Composite DTM 1 m, downloaded for each area.</li>
+      <li>Drawn areas: water leaves wherever the ground falls away outwards across the outline (small dots on the map). Where the ground rises outwards the edge is a wall, and runoff from outside the outline is not included. Mapped rivers and streams entering the outline get an inflow you can set (blue markers); where they leave, the edge is always open (dark markers). The tidal River Tyne is not modelled.</li>
+      <li>Storage tanks, pumps and flood gates are linked 1D elements: a tank's inlet takes surface water at up to its inflow rate into a sealed tank until full; a pump lifts water from a wet well at a low point once it fills to the start depth, onto another spot or out of the area; a flood gate is a wall with one opening per cell along it, open until a control rule closes them all at a set time or when water beside it reaches a set depth.</li>
+      <li>Surface water measures you draw (indicative values for well-maintained features): permeable surfaces soak up to 150 mm/h falling to 40, rain gardens 200 to 50 and pond water, swales 100 to 20 in a lowered channel, new woodland 120 to 25 with rougher ground; all scale with the ground condition and do nothing when the ground is "sealed". Green roofs hold the first 15 mm (adjustable) and release the rest through a 30-minute store.</li>
+      <li>Hazard to people: the Defra/EA method (FD2320), hazard rating = depth × (speed + 0.5) + debris factor (1 where deeper than 0.25 m), worked out at every saved frame and the highest kept. Classes: low under 0.75, moderate to 1.25, significant to 2.0, extreme above.</li>
+      <li>Roads impassable to cars: OpenStreetMap roads (not bridges or tunnels) with water deeper than 0.3 m at some time. Key sites: schools, nurseries, colleges, hospitals, clinics, GP surgeries, care homes, fire and police stations, town halls and railway stations from OpenStreetMap, with water over 0.3 m within 15 m.</li>
+      <li>EA map: the Environment Agency's Risk of Flooding from Surface Water (NaFRA2), England only; it shows the chance of flooding in any year, so one storm will only partly match it.</li>
+      <li><b>This computer</b>: <span id="sysInfo">reading…</span> <button type="button" class="linkbtn" id="benchBtn">Measure speed again</button></li>
+      <li>Roofs: rain on buildings drains through a virtual downpipe into the lowest open ground beside each building (not into enclosed courtyards), so the model receives the rain that falls on roofs. Sewers are not modelled, so this is the case with blocked or overwhelmed drains.</li>
+      <li>Flood defences (England): Environment Agency walls, embankments and gates in drawn areas are raised to their recorded crest level (purple lines; gates assumed closed). Natural high ground is already in the terrain.</li>
+      <li>Jesmond Vale preset: gauged river inflow at the top marker and the Ouseburn culvert (9.1 × 6.1 m, inlet control) at the bottom.</li>
+      <li>Roughness from land cover; Horton infiltration on green and garden areas (assumed parameters). Not included: sewers, culverts in drawn areas, channel beds below the surveyed water surface. Results are indicative, not validated.</li>
+    </ul>
+  </details>
+</section>
+
+<section class="dock panel" aria-label="Playback">
+  <button class="play" id="play" aria-label="Play"><svg viewBox="0 0 24 24" fill="currentColor" id="playIcon"><path d="M7 4l13 8-13 8z"/></svg></button>
+  <div class="clock" id="clock">0:00<small>into the event</small><button type="button" class="linkbtn" id="videoBtn" style="display:block;margin-top:6px;font-size:12.5px">Save video (MP4)</button></div>
+  <div class="chartwrap">
+    <svg id="chart" role="img" aria-label="Rainfall, river inflow and culvert outflow over the event"></svg>
+    <input type="range" id="slider" min="0" value="0" aria-label="Simulation time">
+    <div class="key" id="dockKey"></div>
+  </div>
+</section>
+
+<!-- scenario designer -->
+<dialog id="dlgStorm" aria-labelledby="stormTitle">
+  <form class="dlg" id="stormForm" method="dialog" novalidate>
+    <h2 id="stormTitle">Design a scenario</h2>
+    <p class="sub">Combine rain, river flow, a burst water main, a blocked culvert and ground conditions.</p>
+    <div class="tabs" role="tablist" aria-label="Scenario parts">
+      <button type="button" role="tab" data-tab="rain" aria-selected="true">Rain<i></i></button>
+      <button type="button" role="tab" data-tab="river" aria-selected="false">River<i></i></button>
+      <button type="button" role="tab" data-tab="burst" aria-selected="false">Burst main<i></i></button>
+      <button type="button" role="tab" data-tab="site" aria-selected="false">Culvert & ground<i></i></button>
+      <button type="button" role="tab" data-tab="tide" aria-selected="false" hidden>Tide<i></i></button>
+    </div>
+
+    <div class="tabpanel" data-panel="rain" role="tabpanel">
+      <div class="field">
+        <span class="lbl">Rain</span>
+        <div class="inline">
+          <input class="num" type="number" name="depth" min="0" max="200" step="1" value="30" aria-label="Total rain in millimetres"><span class="unit">mm in</span>
+          <select class="num" name="duration" aria-label="Storm duration">
+            <option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option>
+            <option value="60" selected>1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option>
+            <option value="180">3 hours</option><option value="240">4 hours</option><option value="360">6 hours</option>
+          </select>
+        </div>
+        <div class="hint">Set 0 mm for no rain. For scale: 28 June 2012 dropped about 50 mm on Newcastle in two hours.</div>
+      </div>
+      <div class="field">
+        <span class="lbl" id="shapeLbl">Storm shape</span>
+        <div class="shapes" role="radiogroup" aria-labelledby="shapeLbl">
+          <label><input type="radio" name="profile" value="uniform"><svg viewBox="0 0 44 22"><rect x="2" y="9" width="40" height="13" fill="#8fb3c9"/></svg>Even</label>
+          <label><input type="radio" name="profile" value="front"><svg viewBox="0 0 44 22"><path d="M2 22L12 2L42 22z" fill="#8fb3c9"/></svg>Early peak</label>
+          <label><input type="radio" name="profile" value="centre" checked><svg viewBox="0 0 44 22"><path d="M2 22L22 2L42 22z" fill="#8fb3c9"/></svg>Middle peak</label>
+          <label><input type="radio" name="profile" value="late"><svg viewBox="0 0 44 22"><path d="M2 22L32 2L42 22z" fill="#8fb3c9"/></svg>Late peak</label>
+          <label><input type="radio" name="profile" value="obs2012"><svg viewBox="0 0 44 22"><path d="M2 22V2h6v10h6v9h6v-6h6v4h6v3z" fill="#8fb3c9"/></svg>2012 pattern</label>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Climate change uplift</span>
+        <div class="inline">
+          <select class="num" id="climPreset" aria-label="Climate allowance preset">
+            <option value="0">Today's climate</option>
+            <option value="25">2050s central, +25%</option>
+            <option value="40">2050s upper end, 1 in 100, +40%</option>
+            <option value="35">2070s central, 1 in 100, +35%</option>
+            <option value="45">2070s upper end, 1 in 100, +45%</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input class="num" type="number" name="uplift" min="0" max="100" step="5" value="0" aria-label="Uplift in percent" style="width:76px"><span class="unit">%</span>
+        </div>
+        <div class="hint">Environment Agency peak rainfall allowances for the Tyne management catchment (2022). Applied to the whole storm.</div>
+      </div>
+    </div>
+
+    <div class="tabpanel" data-panel="river" role="tabpanel" hidden>
+      <div class="msg warn" id="riverNote" hidden></div>
+      <div class="field" id="riverList" hidden></div>
+      <div class="field" id="riverField">
+        <span class="lbl" id="inflowLbl">River flow from Jesmond Dene</span>
+        <div class="opts" role="radiogroup" aria-labelledby="inflowLbl">
+          <label class="opt"><input type="radio" name="inflow" value="none"> None</label>
+          <label class="opt"><input type="radio" name="inflow" value="base" checked> Steady flow
+            <input class="num" type="number" name="base_q" min="0" max="30" step="0.1" value="0.5" aria-label="Steady flow"><span class="unit">m³/s</span></label>
+          <label class="opt"><input type="radio" name="inflow" value="gauge2012"> 2012 Crag Hall record ×
+            <input class="num" type="number" name="factor" min="0.1" max="3" step="0.1" value="1" aria-label="Scale factor for the 2012 record"></label>
+          <label class="opt"><input type="radio" name="inflow" value="wave"> Flood wave from upstream</label>
+        </div>
+        <div class="hint">Normal flow is about 0.5 m³/s. On 28 June 2012 it reached 17 m³/s.</div>
+      </div>
+      <div class="field grid2" id="waveFields"><span class="lbl full" id="waveLbl" hidden>Flood wave timing (all flood waves)</span>
+        <label data-preset>Base flow<span><input class="num" type="number" name="wave_base" min="0" max="30" step="0.1" value="0.5"> m³/s</span></label>
+        <label data-preset>Peak flow<span><input class="num" type="number" name="wave_peak" min="0" max="80" step="0.5" value="15"> m³/s</span></label>
+        <label>Starts at<span><input class="num" type="number" name="wave_start" min="0" max="480" step="5" value="0"> min</span></label>
+        <label>Time to peak<span><input class="num" type="number" name="wave_rise" min="5" max="480" step="5" value="45"> min</span></label>
+        <label>Falls back over<span><input class="num" type="number" name="wave_fall" min="5" max="960" step="5" value="120"> min</span></label>
+      </div>
+    </div>
+
+    <div class="tabpanel" data-panel="burst" role="tabpanel" hidden>
+      <div class="field">
+        <label class="chk big"><input type="checkbox" name="burst"> Include a burst water main</label>
+      </div>
+      <div class="field">
+        <div class="inline" style="margin-bottom:12px">
+          <button type="button" class="ghost" id="pickBurst">Pick location on the map</button>
+          <span class="unit" id="burstWhere">No location yet</span>
+        </div>
+        <div class="grid2" id="burstFields">
+          <label>Flow<span><input class="num" type="number" name="burst_q" min="0.01" max="5" step="0.05" value="0.3"> m³/s</span></label>
+          <label>Starts at<span><input class="num" type="number" name="burst_start" min="0" max="480" step="5" value="0"> min</span></label>
+          <label>Lasts<span><input class="num" type="number" name="burst_dur" min="1" max="480" step="5" value="60"> min</span></label>
+        </div>
+        <div class="hint">A large trunk main burst can release several hundred litres per second (0.3 m³/s = 300 l/s) until it is isolated.</div>
+      </div>
+    </div>
+
+    <div class="tabpanel" data-panel="site" role="tabpanel" hidden>
+      <div class="field" id="culvertField">
+        <span class="lbl">Ouseburn culvert blockage</span>
+        <div class="inline">
+          <input type="range" name="blockage" min="0" max="90" step="5" value="0" style="flex:1" aria-label="Culvert blockage in percent">
+          <b id="blockVal" class="numout">0%</b>
+        </div>
+        <div class="hint">Debris across the culvert mouth reduces its opening. The culvert is 9.1 m wide by 6.1 m high; at 0% it only throttles very large flows.</div>
+      </div>
+      <div class="field">
+        <span class="lbl" id="soilLbl">Ground condition</span>
+        <div class="opts" role="radiogroup" aria-labelledby="soilLbl">
+          <label class="opt"><input type="radio" name="soil" value="dry"> Dry summer ground</label>
+          <label class="opt"><input type="radio" name="soil" value="normal" checked> Normal</label>
+          <label class="opt"><input type="radio" name="soil" value="wet"> Saturated after a wet week</label>
+          <label class="opt"><input type="radio" name="soil" value="sealed"> No infiltration (fully sealed)</label>
+        </div>
+        <div class="hint">Changes how fast parks and gardens soak up water. Parameters are assumed, not measured.</div>
+      </div>
+    </div>
+
+    <div class="tabpanel" data-panel="tide" role="tabpanel" hidden>
+      <div class="field">
+        <span class="lbl" id="tideLbl">Tide at the mouth gauge</span>
+        <div class="opts" role="radiogroup" aria-labelledby="tideLbl">
+          <label class="opt"><input type="radio" name="tide_mode" value="synthetic" checked> Synthetic tide</label>
+          <label class="opt"><input type="radio" name="tide_mode" value="recorded"> Recorded tide and river flows from
+            <input class="num" type="datetime-local" name="tide_start" style="width:auto" aria-label="Start of the recorded period, UTC"> UTC</label>
+        </div>
+        <div class="hint" id="tideHint"></div>
+      </div>
+      <div class="field grid2" id="synthFields">
+        <label>High water<span><input class="num" type="number" name="tide_hw" min="-3" max="12" step="0.1" value="2.3"> mAOD</span></label>
+        <label>Low water<span><input class="num" type="number" name="tide_lw" min="-8" max="5" step="0.1" value="-1.3"> mAOD</span></label>
+        <label>First high water at<span><input class="num" type="number" name="tide_hw_time" min="0" max="1440" step="5" value="120"> min</span></label>
+      </div>
+      <div class="field grid2">
+        <span class="lbl full">Storm surge and sea level</span>
+        <label>Surge peak<span><input class="num" type="number" name="surge_peak" min="0" max="3" step="0.1" value="0"> m</span></label>
+        <label>Surge peaks at<span><input class="num" type="number" name="surge_time" min="0" max="1440" step="5" value="120"> min</span></label>
+        <label>Surge lasts<span><input class="num" type="number" name="surge_dur" min="30" max="2880" step="30" value="360"> min</span></label>
+        <label>Sea level rise<span><input class="num" type="number" name="slr" min="0" max="2" step="0.05" value="0"> m</span></label>
+      </div>
+      <div class="field" id="limitFlowField">
+        <span class="lbl" id="limitFlowLbl">River flow at the tidal limit</span>
+        <div class="inline" style="flex-wrap:wrap">
+          <select class="num" name="river_mode" style="width:auto" aria-label="River flow type"><option value="base">Steady</option><option value="wave">Flood wave</option></select>
+          <label class="unit" data-t="base">Base <input class="num" type="number" name="river_base" min="0" max="5000" step="10" value="40" style="width:80px"> m³/s</label>
+          <label class="unit" data-t="peak">Peak <input class="num" type="number" name="river_peak" min="0" max="8000" step="50" value="400" style="width:80px"> m³/s</label>
+        </div>
+        <div class="hint">Flood wave timing is set in the River tab. With a recorded tide, the gauged flows at Bywell, Rowlands Gill, Team Valley and Crag Hall are used instead.</div>
+      </div>
+      <div class="field"><div class="hint"><span id="estHint">A 1D model of the estuary turns these into water levels at this area's edges.</span></div></div>
+    </div>
+
+    <div class="field" style="margin-top:6px">
+      <span class="lbl">Simulation length</span>
+      <div class="inline"><input class="num" type="number" name="sim" min="0.5" max="8" step="0.5" value="2" aria-label="Simulation length in hours"><span class="unit">hours</span></div>
+    </div>
+    <div class="preview">
+      <svg id="hyeto" role="img" aria-label="Scenario preview"></svg>
+      <div class="pvstats" id="pvstats"></div>
+    </div>
+    <div id="formMsg"></div>
+    <div class="actions">
+      <label class="chk" id="useDefWrap" hidden style="margin-right:auto"><input type="checkbox" id="useDef" checked> <span id="useDefLbl">Include my defences</span></label>
+      <button type="button" class="ghost" id="cancelStorm">Cancel</button>
+      <button type="submit" class="primary" id="runStorm">Run scenario</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="drawbar panel" id="drawbar" hidden>
+  <div class="drow">
+    <div class="seg mini" role="group" aria-label="Drawing tool">
+      <button type="button" data-tool="rect" aria-pressed="true">Rectangle</button>
+      <button type="button" data-tool="poly" aria-pressed="false">Polygon</button>
+    </div>
+    <div class="seg mini" role="group" aria-label="Cell size">
+      <button type="button" data-cell="5" aria-pressed="true">5 m cells</button>
+      <button type="button" data-cell="10" aria-pressed="false">10 m cells</button>
+    </div>
+    <input class="num" id="areaName" value="My area" aria-label="Area name" style="width:150px">
+  </div>
+  <p class="dhint" id="drawHint"></p>
+  <p class="dhint" id="replaceNote" style="margin-top:-4px"></p>
+  <div class="budget-line" id="budget"><span class="bdot"></span><span id="budgetTxt">Draw an area to see the compute budget.</span></div>
+  <div class="actions"><button type="button" class="ghost" id="drawCancel">Cancel</button><button type="button" class="primary" id="drawGo" disabled>Prepare area</button></div>
+</div>
+
+<div class="pickbar panel" id="pickbar" hidden>Click inside the dashed area to place the burst. <button class="linkbtn" id="pickCancel">Cancel</button></div>
+
+<!-- progress -->
+<dialog id="dlgRun" aria-labelledby="runTitle">
+  <div class="dlg">
+    <h2 id="runTitle">Running your scenario</h2>
+    <p class="sub" id="runDesc"></p>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="pbar"><div id="pfill"></div></div>
+    <div class="prog"><span id="pstate">Starting</span><span id="peta"></span></div>
+    <div id="runMsg" style="margin-top:12px"></div>
+    <div class="actions" style="margin-top:16px"><button type="button" class="ghost" id="cancelRun">Cancel run</button></div>
+  </div>
+</dialog>
+
+<!-- results -->
+<dialog id="dlgBig" aria-labelledby="bigTitle">
+  <div class="dlg">
+    <h2 id="bigTitle">A large area</h2>
+    <p class="sub">You can go ahead; this is what to expect.</p>
+    <ul class="note" id="bigList" style="padding-left:18px"></ul>
+    <div class="actions">
+      <button type="button" class="ghost" id="bigBack">Back to drawing</button>
+      <button type="button" class="ghost" id="bigTen">Use 10 m cells</button>
+      <button type="button" class="primary" id="bigGo">Prepare anyway</button>
+    </div>
+  </div>
+</dialog>
+<dialog id="dlgRes" aria-labelledby="resTitle">
+  <div class="dlg">
+    <h2 id="resTitle">Scenario results</h2>
+    <p class="sub" id="resDesc"></p>
+    <label class="unit" style="display:flex;gap:8px;align-items:center;margin:4px 0 10px">Compare with
+      <select id="refSel" style="width:auto;flex:1"></select></label>
+    <div class="tabs rtabs" role="tablist" aria-label="Results">
+      <button type="button" role="tab" data-rtab="water" aria-selected="true">Water</button>
+      <button type="button" role="tab" data-rtab="impact" aria-selected="false">Impacts</button>
+      <button type="button" role="tab" data-rtab="cost" aria-selected="false">Costs</button>
+      <button type="button" role="tab" data-rtab="checks" aria-selected="false">Checks</button>
+    </div>
+    <div class="rpanel" data-rpanel="water" role="tabpanel">
+      <div class="res">
+        <div class="thumb" aria-label="Maximum depth map"><img id="thShade" alt=""><img id="thDepth" alt=""></div>
+        <table><thead id="resHead"></thead><tbody id="resTable"></tbody></table>
+      </div>
+      <div class="budget">
+        <div class="lbl">Where the water went</div>
+        <div class="stack" id="stack"></div>
+        <div class="bkey" id="bkey"></div>
+      </div>
+      <p class="note" id="resNote"></p>
+    </div>
+    <div class="rpanel" data-rpanel="impact" role="tabpanel" hidden>
+      <table class="rtable"><thead class="rhead"></thead><tbody id="resTableImpact"></tbody></table>
+      <p class="note" id="resDetails"></p>
+      <p class="note">Buildings: OpenStreetMap footprints, counted when water deeper than 0.3 m reaches the open ground beside them. Roads: impassable to cars above 0.3 m. Key sites: schools, nurseries, hospitals, clinics, GP surgeries, care homes, fire and police stations, town halls and railway stations, with water over 0.3 m within 15 m.</p>
+    </div>
+    <div class="rpanel" data-rpanel="cost" role="tabpanel" hidden>
+      <table class="rtable"><thead class="rhead"></thead><tbody id="resTableCost"></tbody></table>
+      <p class="note"><label style="display:inline-flex;gap:6px;align-items:center">Multiply damage by <input class="num" type="number" id="dmgFactor" value="1" min="0.1" max="10" step="0.01" style="width:80px"></label>
+        for example an exchange rate and inflation to today's pounds; with a factor other than 1, figures are in your units.</p>
+      <p class="note">Damage: JRC global flood depth-damage functions (Huizinga, de Moel and Szewczyk 2017, doi:10.2760/16510), European curves and UK maximum damage values per m² of building, in euros at 2010 prices, using the water depth beside each building. Defence costs are the ones you enter in the Defences panel. One storm only, not an annual average: indicative, not a full appraisal.</p>
+    </div>
+    <div class="rpanel" data-rpanel="checks" role="tabpanel" hidden>
+      <p class="note">Compare this run with the Environment Agency's national Risk of Flooding from Surface Water map (England). The map shows the chance of flooding in any year, not one storm, so expect partial agreement.</p>
+      <div class="unit" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <select id="eaLayer" style="width:auto"><option value="rofsw">any depth</option><option value="rofsw_0_3m_depth">deeper than 0.3 m</option><option value="rofsw_0_6m_depth">deeper than 0.6 m</option></select>
+        <select id="eaBand" style="width:auto"><option value="1">low chance or more (1 in 1000)</option><option value="2">medium or more (1 in 100)</option><option value="3">high (1 in 30)</option></select>
+        <button type="button" class="ghost sm" id="eaGo">Compare</button></div>
+      <p class="note" id="eaOut"></p>
+    </div>
+    <p class="note" id="resStatus" aria-live="polite"></p>
+    <div class="actions">
+      <button type="button" class="ghost" id="closeRes">Close</button>
+      <button type="button" class="ghost" id="videoRes">Save video (MP4)</button>
+      <button type="button" class="ghost" id="reportRes">Report (PDF)</button>
+      <button type="button" class="ghost" id="gisRes">GIS data (zip)</button>
+      <button type="button" class="primary" id="replay">Replay on the map</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/view3d.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const fmtMin = m => `${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,'0')}`;
+const fmtVol = v => v >= 1e4 ? (v/1000).toFixed(0)+'k m³' : Math.round(v).toLocaleString()+' m³';
+const fmtS = s => s < 60 ? `${Math.max(1,Math.round(s))} s` : `${Math.round(s/60)} min`;
+const SHAPES = {uniform:'even rate', front:'early peak', centre:'middle peak', late:'late peak', obs2012:'2012 pattern'};
+const SOILS = {dry:'dry ground', normal:'normal ground', wet:'saturated ground', sealed:'no infiltration'};
+const durTxt = m => m < 60 ? `${m} min` : (m % 60 ? `${(m/60).toFixed(1)} hours` : `${m/60} hour${m===60?'':'s'}`);
+function describe(p){
+  const parts = [];
+  parts.push(p.depth > 0 ? `${p.depth} mm of rain in ${durTxt(p.duration)}, ${SHAPES[p.profile]}${p.uplift ? ` +${p.uplift}% climate uplift` : ''}` : 'no rain');
+  if(AREA && AREA.features.river_inflow)
+    parts.push(p.inflow==='none' ? 'no river inflow' : p.inflow==='base' ? `river steady at ${p.base_q} m³/s`
+             : p.inflow==='gauge2012' ? `2012 river record ×${p.factor}` : `flood wave peaking at ${p.wave_peak} m³/s`);
+  (p.rivers||[]).filter(r => r.mode!=='none').forEach(r => {
+    const nm = (S && (S.inflows||[]).find(f => f.id===r.id) || {}).name || r.name || 'river';
+    parts.push(r.mode==='base' ? `${nm} steady at ${r.base} m³/s` : `${nm} flood wave to ${r.peak} m³/s`);
+  });
+  if(p.tide_mode){
+    let t = p.tide_mode==='recorded' ? `recorded tide and flows from ${String(p.tide_start).replace('T',' ')} UTC`
+          : `tide ${p.tide_lw} to ${p.tide_hw} mAOD, ${estRiver()} ${p.river_mode==='wave' ? 'flood to '+p.river_peak : 'at '+p.river_base} m³/s`;
+    if(p.surge_peak > 0) t += `, ${p.surge_peak} m surge`;
+    if(p.slr > 0) t += `, +${p.slr} m sea level`;
+    parts.push(t);
+  }
+  if(p.burst) parts.push(`burst main ${p.burst_q} m³/s for ${p.burst_dur} min`);
+  if(p.blockage) parts.push(`culvert ${p.blockage}% blocked`);
+  if(p.soil && p.soil!=='normal') parts.push(SOILS[p.soil]);
+  const nm = (p.measures || []).length && p.use_measures !== false ? p.measures.length : 0;
+  return parts.join(', ') + `, ${p.sim} h simulated` + (nm ? `, with ${nm} defence${nm > 1 ? 's' : ''}` : '');
+}
+
+const EST_STATUS = {
+  'calibrated': 'The river bed is calibrated against tide gauges along the estuary.',
+  'partly calibrated': 'The river bed is calibrated against high water at one gauge only.',
+  'assumed': 'The river bed is an assumed profile, not survey data, and has not been checked against gauges up the estuary.',
+  'experimental': 'Experimental: the 1D channel represents this estuary\'s wide mudflats only roughly and there are no gauges up the estuary to check it; levels upstream may be overstated.'};
+const estRiver = () => (S && S.estuary && S.estuary.river) || 'River';
+const estMax = s => s.est_max != null ? s.est_max : (s.tyne_max != null ? s.tyne_max : null);
+let AREA = null, S = null, R = null, CMP = null, CMPLABEL = '', BUDGET = {k:4.5e-4, max_cells:250000, hard_cells:3000000, max_run_s:600};
+let map, water, shadeLayer, deepMarker, burstMarker, pickMarker, areaLayers = [];
+
+/* ---------------- map ---------------- */
+map = L.map('map', {zoomControl:false, zoomSnap:0.25, maxZoom:19}).setView([54.97,-1.6], 12);
+map.createPane('shadePane').style.zIndex = 380;   // terrain shading, always below the water
+map.createPane('waterPane').style.zIndex = 390;   // water depth / speed, below lines and markers (overlayPane 400)
+L.control.zoom({position:'topright'}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom:19, maxNativeZoom:16,
+  attribution:'Basemap © Esri | Buildings © OpenStreetMap contributors | Terrain © Environment Agency (OGL) | Gauges: EA Hydrology API'
+}).addTo(map);
+function fit(bounds){
+  bounds = bounds || (S && L.latLngBounds(S.outline));
+  if(!bounds) return;
+  map.invalidateSize();
+  const c = document.querySelector('.card').getBoundingClientRect(), d = document.querySelector('.dock').getBoundingClientRect();
+  map.fitBounds(bounds, innerWidth > 760 ? {paddingTopLeft:[c.right+10,10], paddingBottomRight:[10,innerHeight-d.top+10]}
+                                    : {paddingTopLeft:[10,c.bottom+8], paddingBottomRight:[10,innerHeight-d.top+8]});
+}
+$('shade').onchange = e => { if(shadeLayer) e.target.checked ? shadeLayer.addTo(map) : shadeLayer.remove(); };
+const burstIcon = L.divIcon({className:'', html:'<svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="#8e3b46" stroke="#fff" stroke-width="2.5"/><circle cx="11" cy="11" r="3" fill="#fff"/></svg>', iconSize:[22,22], iconAnchor:[11,11]});
+
+/* ---------------- legend ---------------- */
+const LEG = {depth:['linear-gradient(90deg,#c6e8f0,#8ccde4,#42a0ce,#186caa,#0c4480,#08244e)',['0','0.3','1.0','1.8 m']],
+             speed:['linear-gradient(90deg,#fae8c8,#f0be6e,#d68232,#a0461e,#5a1e14)',['0','1','2','3 m/s']],
+  diff: ['linear-gradient(90deg,#2f8f4e,#d9ecdc 48%,#f2d9d2 52%,#c0392b)', ['0.5 m shallower','same','0.5 m deeper']],
+  hazard: ['linear-gradient(90deg,#fadc78 0 25%,#f0963c 25% 50%,#cd4632 50% 75%,#78143c 75%)', ['low','moderate','significant','extreme']],
+  ea: ['linear-gradient(90deg,#c3e0ff 0 33%,#9a9fde 33% 66%,#555b9d 66%)', ['low (1 in 1000)','medium (1 in 100)','high (1 in 30)']]};
+function setLegend(k){ const [g,t]=LEG[k]; $('legend').innerHTML=`<div class="ramp" style="background:${g}"></div><div class="ticks">${t.map(x=>`<span>${x}</span>`).join('')}</div>`; }
+
+/* ---------------- 3D view ---------------- */
+let view = 'map', mapOnly = false, viewBeforeLock = 'map';   // drawing or picking a location needs the map
+function lockMap(on){
+  if(on && !mapOnly) viewBeforeLock = view;
+  mapOnly = on;
+  const b = document.querySelector('[data-view="3d"]');
+  b.disabled = on; b.title = on ? 'Finish or cancel the drawing first' : '';
+  if(on) setView('map'); else setView(viewBeforeLock);     // go back to the view you were in
+}
+function setView(v){
+  if(v === '3d' && (mapOnly || !(window.V3 && V3.scene))) v = 'map';
+  view = v;
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
+  $('view3d').hidden = v !== '3d'; $('v3tools').hidden = v !== '3d';
+  document.body.classList.toggle('in3d', v === '3d');
+  if(window.V3) V3.show(v === '3d');
+  $('defBtn').hidden = v !== '3d'; if(v !== '3d'){ $('defPanel').hidden = true; if(typeof cancelDef === 'function' && draft) cancelDef(); }
+  if(typeof updateDiff === 'function') updateDiff();
+  if(v === 'map') setTimeout(() => map.invalidateSize(), 50);
+}
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('rotL').onclick = () => V3.rotate(-1); $('rotR').onclick = () => V3.rotate(1);
+$('exag').onchange = e => V3.setExaggeration(+e.target.value); $('resetV').onclick = () => V3.reset();
+$('treesOn').onchange = e => V3.setTrees(e.target.checked);
+let sceneFor = null;
+async function loadScene(id){
+  if(!window.V3 || !window.THREE){ $('v3note').textContent = '3D view unavailable (could not load the 3D library).'; return; }
+  if(sceneFor === id) return;
+  $('v3note').textContent = 'Building the 3D scene (first time for this area: terrain, ground and building heights)…';
+  try {
+    const sc = await fetch('/api/scene/' + id).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
+    if(!AREA || AREA.id !== id) return;
+    if(!V3._init){ V3.init($('view3d')); V3._init = true; }
+    V3.build(sc); V3.setExaggeration(+$('exag').value); sceneFor = id; loadDefs(id);
+    $('v3note').textContent = `${sc.total_buildings} buildings (${sc.measured_buildings} with measured heights), ${(sc.trees||[]).length.toLocaleString()} trees from ${sc.tree_source || 'the surface model'}`;
+    if(R && R.area === id) V3.setResult(R);
+    setView('3d');
+  } catch(e){ $('v3note').textContent = 'The 3D scene could not be built for this area; the map view still works.'; setView('map'); }
+}
+
+/* ---------------- areas ---------------- */
+async function refreshAreas(selectId){
+  const r = await fetch('/api/areas').then(r=>r.json());
+  BUDGET = {k:r.k, max_cells:r.max_cells, hard_cells:r.hard_cells || 3000000, max_run_s:r.max_run_s};
+  $('areaSel').innerHTML = r.areas.map(a => `<option value="${a.id}">${a.name}${a.kind==='preset' ? ' (preset)' : ''}</option>`).join('');
+  if(selectId) $('areaSel').value = selectId;
+  return r.areas;
+}
+async function openArea(id){
+  setPlaying(false);
+  const r = await fetch('/api/area/'+id).then(r=>r.json());
+  AREA = r.area; S = r.static;
+  areaLayers.forEach(l => l.remove()); areaLayers = [];
+  if(shadeLayer) shadeLayer.remove();
+  shadeLayer = L.imageOverlay(S.shade, S.shadeBounds, {interactive:false, pane:'shadePane'});
+  if($('shade').checked) shadeLayer.addTo(map);
+  areaLayers.push(L.polygon(S.outline, {color:'#16303a', weight:1.2, dashArray:'4 4', opacity:.7, fill:false, interactive:false}).addTo(map));
+  if(S.outflow_pts) areaLayers.push(L.layerGroup(S.outflow_pts.map(p => L.circleMarker(p, {radius:1.6, stroke:false, fillColor:'#185f9e', fillOpacity:.75, interactive:false}))).addTo(map));
+  if(S.entry) areaLayers.push(L.circleMarker(S.entry, {radius:5, color:'#fff', weight:2, fillColor:'#185f9e', fillOpacity:1}).addTo(map).bindTooltip('River inflow'));
+  if(S.exit) areaLayers.push(L.circleMarker(S.exit, {radius:5, color:'#fff', weight:2, fillColor:'#16303a', fillOpacity:1}).addTo(map).bindTooltip('Ouseburn culvert inlet'));
+  (S.defences||[]).forEach(d => d.lines.forEach(l => areaLayers.push(L.polyline(l, {color:'#6b3fa0', weight:3, opacity:.85})
+    .addTo(map).bindTooltip(`${d.kind}, crest ${d.crest} mAOD`))));
+  (S.inflows||[]).forEach(f => areaLayers.push(L.circleMarker(f.at, {radius:6, color:'#fff', weight:2, fillColor:'#185f9e', fillOpacity:1}).addTo(map).bindTooltip(`Inflow: ${f.name}`)));
+  (S.exits||[]).forEach(f => areaLayers.push(L.circleMarker(f.at, {radius:6, color:'#fff', weight:2, fillColor:'#16303a', fillOpacity:1}).addTo(map).bindTooltip(`Exit: ${f.name}`)));
+  const cellsTxt = `${(AREA.n_cells/1000).toFixed(0)}k cells`;
+  $('areaInfo').textContent = `${AREA.area_km2} km², ${AREA.H} m cells, ${cellsTxt}` + (S.inflows && S.inflows.length ? `, ${S.inflows.length} river inflow${S.inflows.length>1?'s':''}` : '') + (S.culverts ? `, ${S.culverts} culvert${S.culverts>1?'s':''} not modelled` : '') + (S.estuary ? `, ${S.estuary.name.toLowerCase()} included` : '') + (AREA.terrain_source ? `, terrain: ${AREA.terrain_source}` : '') + (S.defences && S.defences.length ? `, ${S.defences.length} flood defence${S.defences.length>1?'s':''}` : '') + (S.tidal && S.tidal.length ? ', tidal Tyne not modelled' : '');
+  $('delArea').hidden = AREA.kind === 'preset'; setKey();
+  CMP = null; CMPLABEL = '';
+  if(r.baseline){ CMP = {stats:r.baseline}; CMPLABEL = '2012 replay'; }
+  $('showResults').hidden = true;
+  if(r.result){
+    const isBase = r.baseline && r.result.stats.runtime_s === r.baseline.runtime_s;
+    load(r.result, isBase ? 'Showing: replay of 28 June 2012 (Thunder Thursday). Design your own scenario below.' : 'Last run: '+describe(r.result.params));
+    R.isBase = isBase;
+    if(!isBase){ $('showResults').hidden = false; }
+  } else clearResult();
+  fit();
+  sceneFor = null; loadScene(id);
+}
+$('areaSel').onchange = e => openArea(e.target.value);
+$('delArea').onclick = async () => {
+  if(!AREA || !confirm(`Delete the area "${AREA.name}" and its downloaded data?`)) return;
+  await fetch('/api/area/'+AREA.id, {method:'DELETE'});
+  const list = await refreshAreas(); openArea(list[0].id);
+};
+
+/* ---------------- load a result ---------------- */
+let i = 0, timer = null, layer = 'time';
+function setKey(){
+  const riv = AREA && (AREA.features.river_inflow || (S && S.inflows && S.inflows.length)), culv = AREA && AREA.features.culvert;
+  $('dockKey').innerHTML = '<span><i style="background:var(--rain);height:8px"></i>Rain intensity</span>' +
+    (riv ? '<span><i style="background:var(--water)"></i>River inflow</span>' : '') +
+    `<span><i style="background:var(--stone)"></i>${culv ? 'Outflow at culvert' : 'Outflow across edges'}</span>` +
+    '<span><i style="background:#8e3b46"></i>Burst main</span>' +
+    (S && S.estuary ? `<span><i style="background:#2f7f7a"></i>${estRiver()} level (own scale)</span>` : '') + '<span>flows in m³/s</span>';
+}
+const hasRiver = () => AREA && (AREA.features.river_inflow || (S && S.rivers > 0));
+function clearResult(){
+  R = null; setPlaying(false);
+  if(window.V3 && V3.scene) V3.setResult(null);
+  if(water){ water.remove(); water = null; }
+  if(deepMarker){ deepMarker.remove(); deepMarker = null; }
+  if(burstMarker){ burstMarker.remove(); burstMarker = null; }
+  $('runname').textContent = 'No simulation yet in this area. Design a scenario to run the first one.';
+  $('stats').innerHTML = ''; $('chart').innerHTML = ''; $('clock').firstChild.nodeValue = '0:00';
+}
+function load(res, name){
+  R = res; setPlaying(false);
+  $('runname').textContent = name;
+  const s = res.stats, culv = s.culvert_depth != null;
+  $('stats').innerHTML = [['Rain', s.rain_mm+' mm'], [culv ? 'Peak at culvert' : 'Peak outflow', s.peak_out.toFixed(1)+' m³/s'],
+    ['Wet over 0.3 m', s.wet30_ha+' ha'], culv ? ['Depth at culvert', s.culvert_depth+' m'] : [hasRiver() ? 'Deepest off river' : 'Deepest point', s.max_depth_off+' m']]
+    .map(([a,b])=>`<div><dt>${a}</dt><dd>${b}</dd></div>`).join('');
+  if(water) water.remove();
+  water = L.imageOverlay(res.frames[0], res.bounds, {interactive:false, pane:'waterPane'}).addTo(map);
+  if(deepMarker) deepMarker.remove();
+  deepMarker = L.circleMarker(res.deepest_off, {radius:6, color:'#b07a2a', weight:2, fill:false})
+    .addTo(map).bindTooltip(`Deepest point${hasRiver() ? ' off the river' : ''}: ${s.max_depth_off} m`);
+  if(burstMarker){ burstMarker.remove(); burstMarker = null; }
+  if(res.burst_at) burstMarker = L.marker(res.burst_at, {icon:burstIcon, keyboard:false}).addTo(map)
+    .bindTooltip(`Burst main: ${res.params.burst_q} m³/s for ${res.params.burst_dur} min`);
+  res.frames.forEach(src => { const im = new Image(); im.src = src; });
+  $('slider').max = res.frames.length - 1;
+  pick('time'); drawChart(); show(0);
+  if(window.V3 && V3.scene) V3.setResult(res);
+  updateDiff();
+}
+
+/* ---------------- chart ---------------- */
+let cursor, xScale;
+function drawSeries(svg, W, H, f, end, extra){
+  const x = m => m/end*W;
+  const el = (tag, at) => { const e=document.createElementNS(NS,tag); for(const k in at) e.setAttribute(k,at[k]); svg.appendChild(e); return e; };
+  const rMax = Math.max(...f.rain, 0);
+  if(rMax > 0){
+    f.rain.forEach((r,k)=>{ if(r>0) el('rect',{x:x(k*f.rain_step), y:0, width:Math.max(1.5,x(f.rain_step)-0.5), height:r/rMax*(H*0.38), fill:'#8fb3c9'}); });
+    el('text',{x:Math.min(x(f.rain.indexOf(rMax)*f.rain_step)+4, W-60), y:12, 'font-size':11, fill:'#5d7179'}).textContent = rMax.toFixed(0)+' mm/h';
+  }
+  const all = [...f.q, ...(f.burst_q||[]), ...((extra&&extra.qout)||[])];
+  const qMax = Math.max(2, ...all) * 1.12, y = v => H-14-v/qMax*(H*0.55);
+  if(f.q.some(v => v > 0)) el('path',{d:f.q_t.map((t,k)=>(k?'L':'M')+x(t)+','+y(f.q[k])).join(''), fill:'none', stroke:'#185f9e', 'stroke-width':2});
+  if(f.burst_t && f.burst_t.length){
+    const bt=[...f.burst_t], bq=[...f.burst_q]; if(bt[bt.length-1] < end){ bt.push(end); bq.push(0); }
+    el('path',{d:bt.map((t,k)=>(k?'L':'M')+x(Math.min(t,end))+','+y(bq[k])).join(''), fill:'none', stroke:'#8e3b46', 'stroke-width':2});
+  }
+  const ef = f.estuary || f.tyne;
+  const tide = f.tide ? {t:f.tide_t, v:f.tide} : (ef ? {t:ef.minutes, v:ef.down} : null);
+  if(tide && tide.v.length){
+    const lo = Math.min(...tide.v), hi = Math.max(...tide.v), yt = v => H-14-(v-lo)/Math.max(hi-lo,0.1)*(H*0.5);
+    el('path',{d:tide.t.map((t,k)=>(k?'L':'M')+x(Math.min(t,end))+','+yt(tide.v[k])).join(''), fill:'none', stroke:'#2f7f7a', 'stroke-width':1.6, 'stroke-dasharray':'2 3'});
+    el('text',{x:W-4, y:Math.max(yt(hi)-3, 22), 'text-anchor':'end', 'font-size':10.5, fill:'#2f7f7a'}).textContent = `${estRiver()} ${hi.toFixed(1)} mAOD`;
+  }
+  if(extra && extra.qout) el('path',{d:['M0,'+y(0)].concat(extra.minutes.map((t,k)=>'L'+x(t)+','+y(extra.qout[k]))).join(''), fill:'none', stroke:'#b07a2a', 'stroke-width':2, 'stroke-dasharray':'5 3'});
+  const step = end <= 120 ? 30 : end <= 300 ? 60 : 120;
+  for(let m=0; m<=end; m+=step) el('text',{x:Math.min(x(m)+2, W-26), y:H-1, 'font-size':10.5, fill:'#5d7179'}).textContent = fmtMin(m);
+  return {x, el};
+}
+function drawChart(){
+  if(!R) return;
+  const svg = $('chart'), W = svg.clientWidth || 600, H = 84, end = R.params.sim*60;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  const {x, el} = drawSeries(svg, W, H, R.forcing, end, R); xScale = x;
+  cursor = el('line',{y1:0, y2:H, stroke:'#16303a', 'stroke-width':1.5});
+  place();
+}
+function place(){ if(cursor && R){ const X = xScale(R.minutes[i]); cursor.setAttribute('x1',X); cursor.setAttribute('x2',X); } }
+
+/* ---------------- playback ---------------- */
+function show(k){
+  if(!R) return;
+  i = k; $('slider').value = k;
+  $('clock').firstChild.nodeValue = fmtMin(R.minutes[k]);
+  if(layer==='time') water.setUrl(R.frames[k]);
+  if(window.V3 && V3.scene) V3.setFrame(k);
+  place();
+}
+$('slider').oninput = e => show(+e.target.value);
+$('chart').addEventListener('click', e => {
+  if(!R) return;
+  const r = $('chart').getBoundingClientRect(), m = (e.clientX - r.left)/r.width*R.params.sim*60;
+  let best = 0; R.minutes.forEach((t,k)=>{ if(Math.abs(t-m) < Math.abs(R.minutes[best]-m)) best = k; }); show(best);
+});
+function setPlaying(on){
+  if(on && R){ if(layer!=='time') pick('time'); if(i >= R.frames.length-1) show(0);
+    timer = setInterval(()=>{ if(i >= R.frames.length-1) return setPlaying(false); show(i+1); }, 180);
+    $('playIcon').innerHTML='<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>'; $('play').setAttribute('aria-label','Pause');
+  } else { clearInterval(timer); timer=null; $('playIcon').innerHTML='<path d="M7 4l13 8-13 8z"/>'; $('play').setAttribute('aria-label','Play'); }
+}
+$('play').onclick = () => R && setPlaying(!timer);
+function pick(k){
+  layer = k;
+  document.querySelectorAll('.seg button[data-layer]').forEach(b => b.setAttribute('aria-pressed', b.dataset.layer===k));
+  if(window.V3 && V3.scene) V3.setLayer(k);
+  if(k === 'diff'){ setLegend('diff'); return; }
+  if(eaWms && k !== 'ea'){ map.removeLayer(eaWms); }
+  if(k === 'ea'){ setLegend('ea'); showEA(); return; }
+  if(k === 'hazard'){ setLegend('hazard'); if(R && R.hazard) water.setUrl(R.hazard); return; }
+  if(!R) return;
+  if(k==='time'){ water.setUrl(R.frames[i]); setLegend('depth'); }
+  else { setPlaying(false); water.setUrl(k==='maxd' ? R.maxd : R.speed); setLegend(k==='maxd' ? 'depth' : 'speed'); }
+}
+document.querySelectorAll('.seg button[data-layer]').forEach(b => b.onclick = () => pick(b.dataset.layer));
+addEventListener('resize', () => { drawChart(); fit(); });
+
+/* ---------------- drawing a new area ---------------- */
+const D = {tool:'rect', cell:5, pts:[], shape:null, rubber:null, start:null, done:false};
+function areaKm2(pts){
+  if(pts.length < 3) return 0;
+  const lat0 = pts.reduce((a,p)=>a+p[0],0)/pts.length * Math.PI/180;
+  const xy = pts.map(p => [p[1]*111320*Math.cos(lat0), p[0]*110540]);
+  let a = 0; for(let k=0;k<xy.length;k++){ const [x1,y1]=xy[k], [x2,y2]=xy[(k+1)%xy.length]; a += x1*y2 - x2*y1; }
+  return Math.abs(a)/2/1e6;
+}
+// live size feedback while drawing: warnings, never a block (except the memory ceiling)
+function sizeInfo(pts, cell){
+  const km2 = areaKm2(pts), cells = 2*km2*1e6/(cell*cell)*0.85, perH = 5 + BUDGET.k*cells;
+  return {km2, cells, perH, run2h: 5 + BUDGET.k*cells*2, prep: 60 + km2*180};
+}
+function budget(pts){
+  const line = $('budget'); line.classList.remove('ok','amber','red');
+  const z = sizeInfo(pts, D.cell);
+  if(z.km2 === 0){ $('budgetTxt').textContent = 'Draw an area to see how long it will take.'; $('drawGo').disabled = true; return; }
+  let cls, msg;
+  if(z.cells > BUDGET.hard_cells){ cls='red'; msg = `Too large for this computer's memory: about ${(z.cells/1e6).toFixed(1)} million cells.` + (D.cell===5 ? ' Use 10 m cells or a smaller area.' : ' Draw a smaller area.'); }
+  else if(z.cells > BUDGET.max_cells || z.run2h > BUDGET.max_run_s){ cls='amber'; msg = `Large: ${z.km2.toFixed(2)} km², about ${(z.cells/1000).toFixed(0)}k cells. A 2-hour storm would take about ${fmtS(z.run2h)} on this computer, more with a tidal river.` + (D.cell===5 ? ' 10 m cells would be much quicker.' : ''); }
+  else { cls='ok'; msg = `${z.km2.toFixed(2)} km², about ${(z.cells/1000).toFixed(0)}k cells. Roughly ${fmtS(z.perH)} per simulated hour on this computer.`; }
+  line.classList.add(cls); $('budgetTxt').textContent = msg;
+  $('drawGo').disabled = !(D.done && cls !== 'red');
+}
+// before preparing a large area: what to expect, and the option of 10 m cells
+function confirmSize(pts){
+  const z = sizeInfo(pts, D.cell);
+  if(z.cells <= BUDGET.max_cells && z.run2h <= BUDGET.max_run_s) return Promise.resolve('go');
+  const z10 = D.cell === 5 ? sizeInfo(pts, 10) : null;
+  const items = [
+    `<li>Size: ${z.km2.toFixed(2)} km² at ${D.cell} m cells, about ${(z.cells/1000).toFixed(0)}k cells.</li>`,
+    `<li>Preparing it (downloads, mesh and 3D scene): roughly ${fmtS(z.prep)}.</li>`,
+    `<li>Running a storm on this computer: about ${fmtS(z.perH)} per simulated hour, so about ${fmtS(z.run2h)} for a 2-hour storm. With a tidal river in the area, expect several times longer.</li>`,
+    z.cells > 500000 ? '<li>The 3D view may play back slowly on modest computers.</li>' : '',
+    z10 ? `<li>With 10 m cells: about ${(z10.cells/1000).toFixed(0)}k cells, and runs typically 4 to 8 times faster (a quarter of the cells, and longer time steps). Streets and walls are then less sharply resolved.</li>` : ''];
+  $('bigList').innerHTML = items.join('');
+  $('bigTen').hidden = !z10;
+  return new Promise(res => {
+    const done = v => { $('dlgBig').close(); res(v); };
+    $('bigGo').onclick = () => done('go'); $('bigBack').onclick = () => done('back'); $('bigTen').onclick = () => done('ten');
+    $('dlgBig').showModal();
+  });
+}
+function hint(){
+  $('drawHint').textContent = D.tool==='rect'
+    ? 'Press and drag on the map to draw a rectangle.'
+    : 'Click to add corners. Double-click, or click the first corner, to finish. Backspace removes the last corner.';
+}
+function resetShape(){
+  if(D.shape) D.shape.remove(); if(D.rubber) D.rubber.remove();
+  D.shape = D.rubber = D.start = null; D.pts = []; D.done = false; budget([]);
+}
+function clearMap(){
+  areaLayers.forEach(l => l.remove()); areaLayers = [];
+  [shadeLayer, water, deepMarker, burstMarker].forEach(l => l && l.remove());
+  water = deepMarker = burstMarker = null;
+}
+function startDraw(){
+  lockMap(true);
+  setPlaying(false); clearMap();          // the current drawn area is replaced by the new one
+  const old = [...$('areaSel').options].find(o => !o.textContent.endsWith('(preset)'));
+  $('replaceNote').textContent = old ? `Preparing a new area replaces "${old.textContent}". Its simulation results are kept in the runs folder.` : '';
+  document.body.classList.add('drawing'); $('drawbar').hidden = false;
+  map.doubleClickZoom.disable(); resetShape(); hint();
+  map.on('mousedown', dDown); map.on('mousemove', dMove); map.on('mouseup', dUp); map.on('click', dClick); map.on('dblclick', dDbl);
+}
+function endDraw(){
+  lockMap(false);
+  document.body.classList.remove('drawing'); $('drawbar').hidden = true;
+  map.doubleClickZoom.enable(); map.dragging.enable(); resetShape();
+  map.off('mousedown', dDown); map.off('mousemove', dMove); map.off('mouseup', dUp); map.off('click', dClick); map.off('dblclick', dDbl);
+}
+const ll = e => [e.latlng.lat, e.latlng.lng];
+const shapeStyle = {color:'#b07a2a', weight:2, fillColor:'#b07a2a', fillOpacity:.08};
+function dDown(e){ if(D.tool!=='rect') return; resetShape(); D.start = ll(e); map.dragging.disable(); }
+function rectPts(a,b){ return [[a[0],a[1]],[a[0],b[1]],[b[0],b[1]],[b[0],a[1]]]; }
+function dMove(e){
+  if(D.tool==='rect' && D.start){
+    const pts = rectPts(D.start, ll(e));
+    if(D.shape) D.shape.setLatLngs(pts); else D.shape = L.polygon(pts, shapeStyle).addTo(map);
+    budget(pts);
+  } else if(D.tool==='poly' && D.pts.length && !D.done){
+    const pts = D.pts.concat([ll(e)]);
+    if(D.rubber) D.rubber.setLatLngs(pts); else D.rubber = L.polyline(pts, {color:'#b07a2a', weight:2, dashArray:'4 4'}).addTo(map);
+    budget(pts);
+  }
+}
+function dUp(e){
+  if(D.tool!=='rect' || !D.start) return;
+  map.dragging.enable();
+  const pts = rectPts(D.start, ll(e)); D.start = null;
+  if(areaKm2(pts) < 0.01){ resetShape(); return; }
+  D.pts = pts; D.done = true; budget(pts);
+}
+function finishPoly(){
+  if(D.pts.length < 3) return;
+  if(D.rubber){ D.rubber.remove(); D.rubber = null; }
+  if(D.shape) D.shape.remove();
+  D.shape = L.polygon(D.pts, shapeStyle).addTo(map); D.done = true; budget(D.pts);
+}
+function dClick(e){
+  if(D.tool!=='poly' || D.done) return;
+  const p = map.latLngToContainerPoint(e.latlng);
+  if(D.pts.length >= 3 && p.distanceTo(map.latLngToContainerPoint(D.pts[0])) < 12) return finishPoly();
+  if(D.pts.length && p.distanceTo(map.latLngToContainerPoint(D.pts[D.pts.length-1])) < 4) return;
+  D.pts.push(ll(e));
+  if(D.shape) D.shape.setLatLngs(D.pts); else D.shape = L.polyline(D.pts, {color:'#b07a2a', weight:2}).addTo(map);
+}
+function dDbl(){ if(D.tool==='poly' && !D.done) finishPoly(); }
+document.addEventListener('keydown', e => {
+  if($('drawbar').hidden) return;
+  if(e.key==='Escape'){ endDraw(); if(AREA) openArea(AREA.id); }
+  if(e.key==='Backspace' && D.tool==='poly' && !D.done && D.pts.length && e.target.tagName!=='INPUT'){
+    e.preventDefault(); D.pts.pop(); if(D.shape) D.shape.setLatLngs(D.pts); budget(D.pts);
+  }
+  if(e.key==='Enter' && D.tool==='poly' && !D.done) finishPoly();
+});
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => {
+  D.tool = b.dataset.tool; document.querySelectorAll('[data-tool]').forEach(x => x.setAttribute('aria-pressed', x===b)); resetShape(); hint();
+});
+document.querySelectorAll('[data-cell]').forEach(b => b.onclick = () => {
+  D.cell = +b.dataset.cell; document.querySelectorAll('[data-cell]').forEach(x => x.setAttribute('aria-pressed', x===b));
+  budget(D.done ? D.pts : D.pts);
+});
+$('newArea').onclick = startDraw;
+$('drawCancel').onclick = () => { endDraw(); if(AREA) openArea(AREA.id); };
+$('drawGo').onclick = async () => {
+  const choice = await confirmSize(D.pts);
+  if(choice === 'back') return;
+  if(choice === 'ten'){ D.cell = 10; document.querySelectorAll('[data-cell]').forEach(x => x.setAttribute('aria-pressed', x.dataset.cell === '10')); budget(D.pts); }
+  const body = {name: $('areaName').value || 'My area', poly: D.pts, H: D.cell};
+  const shapeBounds = L.latLngBounds(D.pts);
+  endDraw();
+  $('runTitle').textContent = 'Preparing the area'; $('runDesc').textContent = `${body.name}: downloading terrain and map data, then building the mesh.`;
+  $('pfill').style.width = '5%'; $('pstate').textContent = 'Starting'; $('peta').textContent = ''; $('runMsg').innerHTML = '';
+  $('cancelRun').textContent = 'Cancel'; $('dlgRun').showModal(); fit(shapeBounds);
+  const r = await fetch('/api/areas', {method:'POST', body:JSON.stringify(body)});
+  const j = await r.json();
+  if(r.status===409){ if(AREA) openArea(AREA.id); return busyNotice(); }
+  if(!r.ok){ $('runMsg').innerHTML = `<div class="msg err">${j.error}</div>`; $('cancelRun').textContent='Close'; if(AREA) openArea(AREA.id); return; }
+  jobKind = 'area'; jobId = j.id; misses = 0; pollArea();
+};
+const STEP_PCT = {'Downloading terrain':30, 'Downloading buildings and land cover':55, 'Building the mesh':75, 'Preparing map layers':92};
+async function pollArea(){
+  const s = await getStatus('/api/areajob/'+jobId);
+  if(s.state==='retry'){ $('peta').textContent = 'Reconnecting to the server…'; pollT = setTimeout(pollArea, 1500); return; }
+  $('peta').textContent = '';
+  if(s.step){ $('pstate').textContent = s.step; const key = Object.keys(STEP_PCT).find(k => s.step.startsWith(k)); if(key) $('pfill').style.width = STEP_PCT[key]+'%'; }
+  if(s.state==='done'){
+    $('pfill').style.width = '100%';
+    await refreshAreas(jobId); $('dlgRun').close(); await openArea(jobId); return;
+  }
+  if(s.state==='error'){
+    if(s.error==='Cancelled'){ $('dlgRun').close(); if(AREA) openArea(AREA.id); return; }
+    $('runMsg').innerHTML = `<div class="msg err">Could not prepare the area: ${s.error}. The previous area is unchanged.</div>`; $('cancelRun').textContent='Close';
+    if(AREA) openArea(AREA.id); return;
+  }
+  pollT = setTimeout(pollArea, 800);
+}
+
+/* ---------------- scenario designer ---------------- */
+const form = $('stormForm');
+let burstLL = null;
+function params(){
+  const fd = new FormData(form), n = k => +fd.get(k);
+  return {area: AREA.id, depth:n('depth'), duration:n('duration'), profile:fd.get('profile'), uplift:n('uplift'),
+          inflow:fd.get('inflow'), base_q:n('base_q'), factor:n('factor'),
+          wave_base:n('wave_base'), wave_peak:n('wave_peak'), wave_start:n('wave_start'), wave_rise:n('wave_rise'), wave_fall:n('wave_fall'),
+          burst:fd.get('burst')==='on', burst_lat:burstLL?burstLL.lat:null, burst_lng:burstLL?burstLL.lng:null,
+          burst_q:n('burst_q'), burst_start:n('burst_start'), burst_dur:n('burst_dur'),
+          blockage:n('blockage'), soil:fd.get('soil'), sim:n('sim'),
+          rivers:(S.inflows||[]).map(f => ({id:f.id, mode:fd.get('rm_'+f.id)||'none', base:n('rb_'+f.id), peak:n('rp_'+f.id)})),
+          ...(S.estuary ? {tide_mode:fd.get('tide_mode'), tide_start:fd.get('tide_start'), tide_hw:n('tide_hw'), tide_lw:n('tide_lw'),
+              tide_hw_time:n('tide_hw_time'), surge_peak:n('surge_peak'), surge_time:n('surge_time'), surge_dur:n('surge_dur'),
+              slr:n('slr'), river_mode:fd.get('river_mode'), river_base:n('river_base'), river_peak:n('river_peak')} : {}),
+          measures: MEAS.map(toBNG), use_measures: MEAS.length > 0 && $('useDef').checked};
+}
+function buildRivers(){
+  const list = S.inflows || [];
+  $('riverList').innerHTML = list.map(f => {
+    const river = f.kind === 'river';
+    return `<div class="rivrow" data-id="${f.id}">
+      <div class="rivname">${f.name}<span>${f.kind}, enters at the marked point</span></div>
+      <select class="num" name="rm_${f.id}" aria-label="${f.name} inflow" style="width:auto">
+        <option value="none"${river?'':' selected'}>Off</option><option value="base"${river?' selected':''}>Steady</option><option value="wave">Flood wave</option></select>
+      <div class="flows">
+        <label data-f="base">Base <input class="num" type="number" name="rb_${f.id}" min="0" max="300" step="0.1" value="${river?0.5:0.05}"> m³/s</label>
+        <label data-f="peak">Peak <input class="num" type="number" name="rp_${f.id}" min="0" max="300" step="0.5" value="${river?15:2}"> m³/s</label>
+      </div></div>`;
+  }).join('');
+}
+function syncForm(){
+  const p = params(), riv = AREA.features.river_inflow, drawn = !riv, list = S.inflows || [];
+  const anyWave = p.rivers.some(r => r.mode==='wave');
+  $('riverField').hidden = drawn; $('riverList').hidden = !(drawn && list.length);
+  const notes = [];
+  if(drawn && !list.length) notes.push('No mapped rivers or streams flow into this area. Rain and burst mains still work, and water leaves across the outline.');
+  if(drawn && S.tidal && S.tidal.length) notes.push(`The tidal ${S.tidal.join(', ')} inside this area is not modelled: its water level and flow are not represented.`);
+  $('riverNote').hidden = !notes.length; $('riverNote').innerHTML = notes.join('<br>');
+  document.querySelectorAll('#waveFields [data-preset]').forEach(e => e.hidden = drawn);
+  $('waveLbl').hidden = !drawn;
+  const tyne = !!S.estuary, rec = tyne && p.tide_mode==='recorded', tyneWave = tyne && !rec && p.river_mode==='wave';
+  document.querySelector('.tabs button[data-tab=tide]').hidden = !tyne;
+  if(tyne){
+    $('synthFields').classList.toggle('dim', rec);
+    $('limitFlowField').classList.toggle('dim', rec);
+    document.querySelector('[data-t=peak]').classList.toggle('dim', !tyneWave);
+  }
+  $('waveFields').hidden = drawn && !list.length && !tyneWave;
+  $('waveFields').classList.toggle('dim', drawn ? !(anyWave || tyneWave) : p.inflow!=='wave');
+  document.querySelectorAll('.rivrow').forEach(row => {
+    const m = p.rivers.find(r => r.id===row.dataset.id).mode;
+    row.querySelector('[data-f=base]').classList.toggle('dim', m==='none');
+    row.querySelector('[data-f=peak]').classList.toggle('dim', m!=='wave');
+  });
+  $('culvertField').hidden = !AREA.features.culvert;
+  $('burstFields').classList.toggle('dim', !p.burst);
+  $('blockVal').textContent = p.blockage+'%';
+  const on = {rain: p.uplift>0, river: riv ? (p.inflow==='gauge2012' || p.inflow==='wave') : p.rivers.some(r => r.mode!=='none'), burst: p.burst, site: p.blockage>0 || p.soil!=='normal', tide: tyne && (rec || p.surge_peak>0 || p.slr>0 || tyneWave)};
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', on[b.dataset.tab]));
+  $('burstWhere').textContent = burstLL ? `Placed at ${burstLL.lat.toFixed(5)}, ${burstLL.lng.toFixed(5)}` : 'No location yet';
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x===b));
+  document.querySelectorAll('.tabpanel').forEach(p => p.hidden = p.dataset.panel !== b.dataset.tab);
+});
+function openTab(t){ document.querySelector(`.tabs button[data-tab=${t}]`).click(); }
+$('climPreset').onchange = e => { if(e.target.value!=='custom'){ form.uplift.value = e.target.value; } form.dispatchEvent(new Event('input')); };
+form.uplift.addEventListener('input', () => {
+  const v = form.uplift.value, o = [...$('climPreset').options].find(o => o.value===v);
+  $('climPreset').value = o ? v : 'custom';
+});
+let checkT, lastOK = false;
+async function check(){
+  syncForm();
+  const p = params();
+  const r = await fetch('/api/check',{method:'POST',body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>({ok:false,error:'Server not reachable. Is server.py running?'}));
+  lastOK = r.ok; $('runStorm').disabled = !r.ok;
+  $('formMsg').innerHTML = !r.ok ? `<div class="msg err">${r.error}</div>` : r.warnings.map(w=>`<div class="msg warn">${w}</div>`).join('');
+  const svg = $('hyeto'), W = svg.clientWidth || 500, H = 70; svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  if(!r.ok){ $('pvstats').innerHTML=''; return; }
+  const f = r.forcing, q = r.params;
+  drawSeries(svg, W, H, f, q.sim*60, null);
+  const mx = Math.max(...f.rain, 0), pk = Math.max(...f.q);
+  $('pvstats').innerHTML = (mx>0 ? `<span>Peak rain <b>${mx.toFixed(0)} mm/h</b></span>` : '') +
+    (pk > 0 ? `<span>Peak river inflow <b>${pk.toFixed(1)} m³/s</b></span>` : '') +
+    (q.burst ? `<span>Burst <b>${q.burst_q} m³/s</b></span>` : '') +
+    `<span>Estimated run time <b>about ${fmtS(q.est_s)}</b></span>`;
+}
+form.addEventListener('input', () => { syncForm(); clearTimeout(checkT); checkT = setTimeout(check, 250); });
+form.querySelectorAll('input[name=base_q]').forEach(e=>e.addEventListener('focus',()=>form.querySelector('input[value=base]').checked=true));
+form.querySelectorAll('input[name=factor]').forEach(e=>e.addEventListener('focus',()=>form.querySelector('input[value=gauge2012]').checked=true));
+let formArea = null;
+$('newStorm').onclick = () => {
+  if(!AREA) return;
+  setPlaying(false);
+  if(formArea !== AREA.id){            // a new area: reset area-specific inputs
+    burstLL = null; form.burst.checked = false; form.blockage.value = 0;
+    if(!AREA.features.river_inflow) form.querySelector('input[value=none]').checked = true;
+    buildRivers(); formArea = AREA.id;
+    if(S.estuary) fetch('/api/tidestats?est='+S.estuary.id).then(r=>r.json()).then(t => {
+      form.tide_hw.value = t.hw_mean; form.tide_lw.value = t.lw_mean;
+      $('tideLbl').textContent = `Tide at ${t.gauge}`; $('limitFlowLbl').textContent = `${t.river} flow at ${t.limit}`;
+      $('estHint').textContent = `A 1D model of the ${t.name.replace('Tidal ','tidal ')} from ${t.limit} to ${t.gauge} turns these into water levels at this area's edges. ${EST_STATUS[S.estuary.status || (S.estuary.calibrated ? 'calibrated' : 'assumed')]}${t.proxy_km ? ` The tide comes from the ${t.gauge} gauge, ${t.proxy_km} km from this estuary's mouth, so timing and height there may differ.` : ''}`;
+      $('tideHint').textContent = t.offline ? `The ${t.gauge} gauge has not reported recently, so these high and low waters are generic defaults: set them yourself, and use a synthetic tide.` : `Last 30 days at ${t.gauge}: high water typically ${t.hw_mean} mAOD (highest ${t.hw_max}), low water typically ${t.lw_mean} mAOD (lowest ${t.lw_min}). Recorded tides are available for about the last nine months.`;
+      check();
+    });
+    if(!form.tide_start.value){ const d = new Date(Date.now() - 3*864e5); d.setUTCHours(6,0,0,0); form.tide_start.value = d.toISOString().slice(0,16); }
+  }
+  $('dlgStorm').showModal(); check();
+};
+$('cancelStorm').onclick = () => $('dlgStorm').close();
+form.addEventListener('submit', e => { e.preventDefault(); if(lastOK) start(params()); });
+
+/* ---------------- pick burst location ---------------- */
+function endPick(){ lockMap(false); document.body.classList.remove('picking'); $('pickbar').hidden = true; map.off('click', onPick); }
+function onPick(e){
+  if(!L.polygon(S.outline).getBounds().contains(e.latlng)) return;
+  burstLL = e.latlng;
+  if(pickMarker) pickMarker.remove();
+  pickMarker = L.marker(burstLL, {icon:burstIcon, keyboard:false}).addTo(map);
+  endPick(); form.burst.checked = true;
+  $('dlgStorm').showModal(); openTab('burst'); check();
+}
+$('pickBurst').onclick = () => {
+  lockMap(true);
+  $('dlgStorm').close(); document.body.classList.add('picking'); $('pickbar').hidden = false;
+  if(burstMarker) burstMarker.remove();
+  map.on('click', onPick);
+};
+$('pickCancel').onclick = () => { endPick(); $('dlgStorm').showModal(); openTab('burst'); };
+document.addEventListener('keydown', e => { if(e.key==='Escape' && !$('pickbar').hidden) $('pickCancel').click(); });
+
+/* ---------------- run + progress ---------------- */
+let jobId = null, jobKind = null, pollT = null;
+async function start(p){
+  const chk = await fetch('/api/check',{method:'POST',body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
+  if(chk && chk.ok && chk.params && chk.params.est_s > BUDGET.max_run_s &&
+     !window.confirm(`This run is estimated to take about ${fmtS(chk.params.est_s)} on this computer. Run it anyway?\n\nTo shorten it, simulate fewer hours, or prepare the area again with 10 m cells or smaller.`)) return;
+  $('dlgStorm').close();
+  if(pickMarker){ pickMarker.remove(); pickMarker = null; }
+  $('runTitle').textContent = 'Running your scenario';
+  $('runDesc').textContent = `${AREA.name}: ${describe(p)}`;
+  $('pfill').style.width = '0%'; $('pstate').textContent = 'Starting'; $('peta').textContent = ''; $('runMsg').innerHTML = '';
+  $('cancelRun').textContent = 'Cancel run';
+  $('dlgRun').showModal();
+  const r = await fetch('/api/run',{method:'POST',body:JSON.stringify(p)});
+  const j = await r.json();
+  if(r.status===409){ return busyNotice(); }
+  if(!r.ok){ $('runMsg').innerHTML = `<div class="msg err">${j.error}</div>`; $('cancelRun').textContent='Close'; return; }
+  jobKind = 'run'; jobId = j.id; misses = 0; poll(p);
+}
+let misses = 0;
+async function getStatus(url){
+  try { const r = await fetch(url); const j = await r.json(); misses = 0; return j; }
+  catch(e){ misses++; return misses > 40 ? {state:'error', error:'Lost contact with the server. Is its window still open?'} : {state:'retry'}; }
+}
+async function poll(p){
+  const s = await getStatus('/api/job/'+jobId);
+  if(s.state==='retry'){ $('peta').textContent = 'Reconnecting to the server…'; pollT = setTimeout(()=>poll(p), 1500); return; }
+  const pct = Math.round((s.progress||0)*100);
+  $('pfill').style.width = pct+'%'; $('pbar').setAttribute('aria-valuenow', pct);
+  if(s.state==='running'){
+    $('pstate').textContent = `Simulated ${fmtMin((s.progress||0)*p.sim*60)} of ${fmtMin(p.sim*60)}`;
+    $('peta').textContent = s.eta_s!=null ? `about ${fmtS(s.eta_s)} left` : '';
+  } else if(s.state==='preparing' || s.state==='starting'){ $('pstate').textContent = s.step || 'Building the model'; }
+  else if(s.state==='processing'){ $('pstate').textContent = 'Preparing maps'; $('peta').textContent=''; }
+  if(s.state==='done'){
+    const res = await fetch('/api/result/'+jobId).then(r=>r.json());
+    if(R && R.area === res.area){ CMP = R; CMPLABEL = R.isBase ? '2012 replay' : 'Previous run'; }
+    $('dlgRun').close(); load(res, 'Your scenario: '+describe(res.params)); showResults(res); $('showResults').hidden = false; return;
+  }
+  if(s.state==='error'){
+    if(s.error==='Cancelled'){ $('dlgRun').close(); return; }
+    $('runMsg').innerHTML = `<div class="msg err">The run failed: ${s.error}</div>`; $('cancelRun').textContent='Close'; return;
+  }
+  pollT = setTimeout(()=>poll(p), 700);
+}
+$('cancelRun').onclick = async () => {
+  clearTimeout(pollT);
+  const cancelling = $('cancelRun').textContent!=='Close';
+  if(cancelling) await fetch('/api/cancel',{method:'POST',body:'{}'});
+  $('dlgRun').close();
+  if(cancelling && jobKind==='area' && AREA) openArea(AREA.id);
+};
+$('dlgRun').addEventListener('cancel', e => e.preventDefault());
+
+async function attach(job){
+  jobKind = job.kind; jobId = job.id; misses = 0; $('runMsg').innerHTML = '';
+  $('cancelRun').textContent = 'Cancel run';
+  if(!$('dlgRun').open) $('dlgRun').showModal();
+  if(job.kind === 'run'){
+    $('runTitle').textContent = 'Running a scenario';
+    $('runDesc').textContent = job.params ? describe(job.params) : '';
+    poll(job.params || {sim: 1});
+  } else {
+    $('runTitle').textContent = 'Preparing an area'; $('runDesc').textContent = ''; pollArea();
+  }
+}
+async function busyNotice(){
+  $('runMsg').innerHTML = `<div class="msg warn">Another job is still running on the server.
+    <div class="actions" style="margin-top:8px;justify-content:flex-start">
+      <button type="button" class="ghost" id="busyShow">Show its progress</button>
+      <button type="button" class="ghost" id="busyKill">Cancel it</button></div></div>`;
+  $('cancelRun').textContent = 'Close';
+  $('busyShow').onclick = async () => { const c = await fetch('/api/current').then(r=>r.json()); if(c.kind) attach(c); else { $('runMsg').innerHTML = '<div class="msg warn">It has just finished. Run your scenario again.</div>'; } };
+  $('busyKill').onclick = async () => { await fetch('/api/cancel',{method:'POST',body:'{}'}); $('runMsg').innerHTML = '<div class="msg warn">Cancelled. You can run your scenario now.</div>'; };
+}
+
+/* ---------------- user-placed defences ---------------- */
+let MEAS = [], draft = null;
+const MNAMES = {wall:'Flood wall', embankment:'Embankment', barrier:'Demountable barrier', basin:'Storage basin', kerb:'Raised kerb',
+  deepen:'Channel deepening', permeable:'Permeable surface', raingarden:'Rain garden', swale:'Swale', trees:'Tree planting', greenroof:'Green roofs',
+  tank:'Storage tank', pump:'Pump', gate:'Flood gate'};
+const MSW = {wall:'#c8742a', barrier:'#e0b040', embankment:'#8a7a4a', basin:'#41606e', kerb:'#8d8d8d', deepen:'#2f6f9a',
+  permeable:'#d4a83a', raingarden:'#3f9a4a', swale:'#2f9f9a', trees:'#2f6f2f', greenroof:'#7fc04a',
+  tank:'#34495e', pump:'#7d3c98', gate:'#b0413e'};
+const AREAT = new Set(['basin', 'permeable', 'raingarden', 'trees', 'deepen', 'greenroof']);
+const toBNG = m => { const g = V3.grid; return {...m, pts: m.pts.map(([x, z]) => [g.X0 + x, g.Y1 - z])}; };
+const fromBNG = m => { const g = V3.grid; return {...m, pts: m.pts.map(([x, y]) => [x - g.X0, g.Y1 - y])}; };
+const lenOf = pts => pts.slice(1).reduce((a, p, k) => a + Math.hypot(p[0] - pts[k][0], p[1] - pts[k][1]), 0);
+const areaOf = pts => Math.abs(pts.reduce((a, p, k) => { const q = pts[(k + 1) % pts.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+function sizeText(m){
+  const a = () => `${Math.round(areaOf(m.pts)).toLocaleString()} m²`, l = () => `${Math.round(lenOf(m.pts))} m`;
+  const T = {basin: () => `${a()}, ${m.depth} m deep`, raingarden: () => `${a()}, ponds up to ${m.depth} m`, deepen: () => `${a()} of channel, ${m.depth} m deeper`,
+    permeable: a, trees: a, greenroof: () => `buildings in ${a()}, holds ${m.retention} mm`, swale: () => `${l()}, ${m.width} m wide, ${m.depth} m deep`,
+    kerb: () => `${l()}, ${m.height} m high`, embankment: () => `${l()}, ${m.height} m high, ${m.width} m wide`,
+    tank: () => `${(+m.volume).toLocaleString()} m³, takes up to ${m.inflow} m³/s`,
+    pump: () => `${m.rate} m³/s, starts at ${m.start} m` + (m.pts.length > 1 ? ', to another spot' : ', out of the area'),
+    gate: () => `${l()}, ${m.height} m high, ` + ({time: `closes at ${m.close_min} min`, level: `closes when water is ${m.close_level} m deep`, open: 'left open', closed: 'closed throughout'})[m.mode]};
+  return (T[m.type] || (() => `${l()}, ${m.height} m high`))();
+}
+
+function renderDefs(){
+  $('defList').innerHTML = MEAS.map((m, k) => `<li><span><span class="swatch" style="background:${MSW[m.type]}"></span>${m.name}<br><span class="unit">${sizeText(m)}</span>
+    <br><label class="unit">Cost <input class="num" type="number" min="0" step="1000" data-cost="${k}" value="${m.cost ?? ''}" placeholder="optional" style="width:110px;padding:3px 6px"></label></span>
+    <button type="button" class="linkbtn" data-del="${k}" aria-label="Remove ${m.name}">Remove</button></li>`).join('') ||
+    '<li class="unit">None yet.</li>';
+  $('defList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { MEAS.splice(+b.dataset.del, 1); saveDefs(); });
+  $('defList').querySelectorAll('[data-cost]').forEach(i => i.onchange = () => { MEAS[+i.dataset.cost].cost = i.value === '' ? null : +i.value; saveDefs(); });
+  if(window.V3 && V3.scene) V3.drawMeasures(MEAS, draft);
+  const n = MEAS.length; $('useDefWrap').hidden = !n; $('useDefLbl').textContent = `Include my defences (${n})`;
+  $('defBtn').textContent = n ? `Defences (${n})` : 'Defences';
+}
+async function saveDefs(){
+  renderDefs();
+  if(!AREA || !V3.grid) return;
+  try { await fetch('/api/measures/' + AREA.id, {method:'POST', body: JSON.stringify(MEAS.map(toBNG))}); } catch(e){}
+}
+async function loadDefs(id){
+  MEAS = []; draft = null;
+  try { const ms = await fetch('/api/measures/' + id).then(r => r.json()); if(AREA && AREA.id === id && V3.grid) MEAS = ms.map(fromBNG); } catch(e){}
+  renderDefs();
+}
+function startDef(type){
+  const defaults = {wall:{height:1.0}, barrier:{height:0.8}, embankment:{height:1.5, width:10}, basin:{depth:1.5, bund:0},
+    kerb:{height:0.2}, deepen:{depth:0.5}, permeable:{}, raingarden:{depth:0.2}, swale:{width:4, depth:0.3}, trees:{}, greenroof:{retention:15},
+    tank:{volume:500, inflow:0.2, depth:3}, pump:{rate:0.2, start:0.3}, gate:{height:1.2, mode:'time', close_min:30, close_level:0.3}};
+  const HELP = {permeable:'Permeable paving or ground: much more rain soaks in (roads and paving included).',
+    raingarden:'Planted hollows that hold and soak up water.', swale:'A shallow grassed channel that carries and soaks up water.',
+    trees:'New woodland: rougher ground that slows water and soaks more in.', greenroof:'Draw round the buildings to give green roofs: they hold the first millimetres of rain and release the rest slowly.',
+    kerb:'A low raised kerb or road hump that steers shallow water.', deepen:'Deepens the river channel inside the outline (not tidal rivers).',
+    tank:'An underground tank: surface water drains into it at up to the inflow rate until it is full, then backs up. Click once where its inlet goes.',
+    pump:'Pumps water from a low point. Click the intake, then where it discharges (or press Enter after the intake to pump it out of the area).',
+    gate:'A wall with gates in it: open until it closes at a set time, or when the water beside it reaches a set depth.'};
+  draft = {type, name: MNAMES[type] + ' ' + (MEAS.filter(m => m.type === type).length + 1), pts: [], ...defaults[type]};
+  const f = (k, lbl, mn, mx, st) => `<label>${lbl}<input class="num" type="number" data-p="${k}" value="${draft[k]}" min="${mn}" max="${mx}" step="${st}"></label>`;
+  $('defParams').innerHTML = ({
+    basin: f('depth', 'Depth (m)', 0.2, 5, 0.1) + f('bund', 'Bund height (m)', 0, 3, 0.1),
+    raingarden: f('depth', 'Ponding depth (m)', 0.05, 0.5, 0.05), deepen: f('depth', 'Extra depth (m)', 0.1, 3, 0.1),
+    swale: f('width', 'Width (m)', 2, 15, 0.5) + f('depth', 'Depth (m)', 0.1, 1, 0.05), kerb: f('height', 'Height (m)', 0.05, 0.5, 0.05),
+    greenroof: f('retention', 'Rain held (mm)', 5, 40, 1), permeable: '', trees: '',
+    tank: f('volume', 'Volume (m³)', 10, 50000, 50) + f('inflow', 'Max inflow (m³/s)', 0.01, 5, 0.05),
+    pump: f('rate', 'Rate (m³/s)', 0.01, 10, 0.05) + f('start', 'Starts at depth (m)', 0.05, 2, 0.05),
+    gate: f('height', 'Height (m)', 0.2, 6, 0.1) + `<label>Gate<select data-p="mode"><option value="time">closes at a time</option><option value="level">closes at a water depth</option><option value="open">stays open</option><option value="closed">stays closed</option></select></label>`
+          + f('close_min', 'Closes at (min)', 0, 2880, 5) + f('close_level', 'or at depth (m)', 0.05, 5, 0.05),
+    embankment: f('height', 'Height above ground (m)', 0.2, 6, 0.1) + f('width', 'Crest width (m)', 4, 40, 1)
+  })[type] ?? f('height', 'Height above ground (m)', 0.2, 6, 0.1);
+  $('defParams').querySelectorAll('[data-p]').forEach(i => { if(i.tagName === 'SELECT') i.value = draft[i.dataset.p];
+    i.oninput = () => { draft[i.dataset.p] = i.tagName === 'SELECT' ? i.value : +i.value; }; });
+  $('defHint').textContent = (HELP[type] ? HELP[type] + ' ' : '') + `Click on the ground to place the ${AREAT.has(type) ? 'corners of the area' : 'line, point by point'}. Double-click or press Enter to finish, Backspace to undo, Esc to cancel.` + (['wall','barrier','embankment','kerb'].includes(type) ? ' Lines should end on higher ground or another defence, or water goes round them.' : '');
+  V3.setPicker((p) => {
+    if(!draft) return;
+    if(p) { draft.pts.push(p); V3.drawMeasures(MEAS, draft);
+            if((draft.type === 'tank' && draft.pts.length === 1) || (draft.type === 'pump' && draft.pts.length === 2)) finishDef(); }
+    else finishDef();
+  });
+}
+function finishDef(){
+  if(!draft) return;
+  const ok = draft.pts.length >= (AREAT.has(draft.type) ? 3 : (['tank', 'pump'].includes(draft.type) ? 1 : 2));
+  if(ok) { draft.pts = draft.pts.filter((p, k, a) => !k || Math.hypot(p[0] - a[k-1][0], p[1] - a[k-1][1]) > 0.5); MEAS.push(draft); }
+  draft = null; V3.setPicker(null); $('defParams').innerHTML = ''; $('defHint').textContent = ok ? '' : 'Not enough points: nothing was added.';
+  saveDefs();
+}
+function cancelDef(){ draft = null; V3.setPicker(null); $('defParams').innerHTML = ''; $('defHint').textContent = ''; renderDefs(); }
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => startDef(b.dataset.add));
+$('defBtn').onclick = () => { const open = $('defPanel').hidden; $('defPanel').hidden = !open; $('defBtn').setAttribute('aria-expanded', open); if(!open) cancelDef(); };
+addEventListener('keydown', e => {
+  if(!draft) return;
+  if(e.key === 'Enter') { e.preventDefault(); finishDef(); }
+  else if(e.key === 'Escape') cancelDef();
+  else if(e.key === 'Backspace') { e.preventDefault(); draft.pts.pop(); V3.drawMeasures(MEAS, draft); }
+});
+
+/* the EA national surface-water map: WMS on the 2D map, per-cell bands in 3D */
+let eaWms = null, eaFor = null;
+async function showEA(){
+  if(!eaWms) eaWms = L.tileLayer.wms('https://environment.data.gov.uk/spatialdata/nafra2-risk-of-flooding-from-surface-water/wms',
+    {layers:'rofsw', format:'image/png', transparent:true, opacity:0.75, attribution:'Surface water map © Environment Agency'});
+  if(view !== '3d') { eaWms.addTo(map); if(water) water.setUrl('data:image/gif;base64,R0lGODlhAQABAAAAACw='); }
+  if(AREA && eaFor !== AREA.id){
+    try { const r = await fetch('/api/rofsw/' + AREA.id).then(x => x.json()); if(r.cells_u8){ V3.setEA(r.cells_u8); eaFor = AREA.id; } }
+    catch(e){ $('v3note').textContent = 'The EA map could not be loaded (England only).'; }
+  }
+}
+async function compareEA(){
+  if(!R || !R.run) return;
+  const layer = $('eaLayer').value, band = $('eaBand').value;
+  $('eaOut').textContent = 'Comparing…';
+  try {
+    const r = await fetch(`/api/rofsw_compare/${R.run}?layer=${layer}&band=${band}`).then(x => x.json());
+    if(r.error) throw new Error(r.error);
+    const pc = v => v == null ? '–' : Math.round(v * 100) + '%';
+    $('eaOut').textContent = `EA map: ${r.ea_ha} ha; this run (deeper than ${r.threshold} m): ${r.model_ha} ha; both: ${r.both_ha} ha. ` +
+      `${pc(r.model_in_ea)} of this run's flooding lies within the EA map, which covers ${pc(r.ea_in_model)} of the EA extent; overall agreement (critical success index) ${pc(r.csi)}. ` +
+      'The EA map shows the chance of flooding in any year, not one storm, so expect partial agreement.';
+  } catch(e){ $('eaOut').textContent = 'The comparison could not be made: ' + e.message; }
+}
+
+/* damage figures: JRC values (euros, 2010 prices) times a factor the user may set for currency and prices */
+let DMG_FACTOR = 1;
+const money = (v, asEntered) => { const x = asEntered ? v : v * DMG_FACTOR; return (DMG_FACTOR === 1 && !asEntered ? '€' : '') + Math.round(x).toLocaleString(); };
+
+/* comparing with any earlier run of this area */
+async function fillRefs(){
+  if(!AREA) return;
+  let runs = [];
+  try { runs = await fetch('/api/runs/' + AREA.id).then(r => r.json()); } catch(e){}
+  const opts = [];
+  if(S && AREA.features && AREA.features.river_inflow) opts.push(['__base', '2012 replay']);
+  runs.filter(r => !R || r.id !== R.run).forEach(r => opts.push([r.id, `${r.id.slice(0, 13).replace('-', ' ')}: ${r.depth} mm of rain in ${r.duration} min` + (r.measures ? `, ${r.measures} defence${r.measures > 1 ? 's' : ''}` : ', no defences')]));
+  $('refSel').innerHTML = '<option value="">Nothing</option>' + opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+  if(CMP && CMP.run) $('refSel').value = CMP.run; else if(CMP && CMPLABEL === '2012 replay') $('refSel').value = '__base';
+}
+$('refSel').onchange = async e => {
+  const v = e.target.value;
+  if(!v) { CMP = null; CMPLABEL = ''; }
+  else if(v === '__base') { const r = await fetch('/api/area/' + AREA.id).then(x => x.json()); CMP = r.baseline ? {stats: r.baseline} : null; CMPLABEL = '2012 replay'; }
+  else { CMP = await fetch('/api/result/' + v).then(x => x.json()); CMPLABEL = 'Run ' + v.slice(9, 13).replace(/(..)(..)/, '$1:$2'); }
+  updateDiff(); showResults(R);
+};
+function updateDiff(){
+  const ok = !!(R && R.cells && CMP && CMP.cells && CMP.cells.NX === R.cells.NX && CMP.cells.NY === R.cells.NY);
+  $('diffBtn').hidden = !(ok && view === '3d');
+  if(window.V3 && V3.scene) V3.setDiff(ok ? R.cells.maxd_u8 : null, ok ? CMP.cells.maxd_u8 : null);
+  if(!ok && layer === 'diff') pick('maxd');
+}
+
+/* ---------------- this computer: specifications, speed test, limits ---------------- */
+async function showSystem(){
+  try {
+    const s = await fetch('/api/system').then(r => r.json()), i = s.info, b = s.bench;
+    const mem = i.mem_total_mb ? `${(i.mem_total_mb/1024).toFixed(1)} GB memory (${(i.mem_avail_mb/1024).toFixed(1)} GB free)` : 'memory unknown';
+    let txt = `${i.cpu}, ${i.cores_physical} core${i.cores_physical === 1 ? '' : 's'}${i.cores_logical !== i.cores_physical ? ` (${i.cores_logical} threads)` : ''}, ${mem}` + (i.gpu ? `, graphics card ${i.gpu}` : '') + '. ';
+    if(s.running) txt += 'Measuring its speed now (about a minute)… ';
+    else if(b) txt += `Speed test (${b.when}): fastest on ${b.best}` + (b.results.length > 1 ? ` (${b.results.map(r => r.ok ? `${r.label} ${r.seconds} s` : `${r.label}: ${r.note}`).join('; ')})` : '') + '. ';
+    else txt += 'Speed not measured yet. ';
+    txt += `Runs take about ${fmtS(s.k * 100000)} per 100k cells per simulated hour here; the largest area this computer can hold now is about ${(s.ceiling_cells/1e6).toFixed(1)} million cells (from free memory).`;
+    $('sysInfo').textContent = txt;
+    BUDGET.k = s.k; BUDGET.hard_cells = s.ceiling_cells;
+    if(s.running) setTimeout(showSystem, 4000);
+  } catch(e){ $('sysInfo').textContent = 'not available.'; }
+}
+$('benchBtn').onclick = async () => {
+  const r = await fetch('/api/bench', {method:'POST', body:'{}'});
+  if(r.status === 409){ $('sysInfo').textContent = 'A run or preparation is in progress; measure again when it has finished.'; return; }
+  setTimeout(showSystem, 800);
+};
+showSystem();
+
+/* ---------------- video ---------------- */
+const loadImg = src => new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = src; });
+const merc = la => Math.log(Math.tan(Math.PI / 4 + la * Math.PI / 360));
+let shadeImg = null;
+async function drawMapFrame(ctx, Wc, Hc, k){
+  // the map view without basemap tiles: terrain shading, water, outline and markers on a plain background
+  ctx.fillStyle = '#eef1f0'; ctx.fillRect(0, 0, Wc, Hc);
+  const pts = S.outline, la = pts.map(p => p[0]), lo = pts.map(p => p[1]);
+  const x0 = Math.min(...lo), x1 = Math.max(...lo), y0 = merc(Math.min(...la)), y1 = merc(Math.max(...la));
+  const s = Math.min((Wc - 120) / (x1 - x0), (Hc - 200) / ((y1 - y0) * 180 / Math.PI));
+  const X = g => Wc / 2 + (g - (x0 + x1) / 2) * s, Y = l => Hc / 2 + 20 - (merc(l) - (y0 + y1) / 2) * 180 / Math.PI * s;
+  const box = (b, im) => ctx.drawImage(im, X(b[0][1]), Y(b[1][0]), X(b[1][1]) - X(b[0][1]), Y(b[0][0]) - Y(b[1][0]));
+  if(!shadeImg || shadeImg._src !== S.shade){ shadeImg = await loadImg(S.shade); shadeImg._src = S.shade; }
+  box(S.shadeBounds, shadeImg);
+  box(R.bounds, await loadImg(layer==='time' ? R.frames[k] : (layer==='maxd' ? R.maxd : R.speed)));
+  ctx.strokeStyle = '#16303a'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.2; ctx.beginPath();
+  pts.forEach((p, j) => j ? ctx.lineTo(X(p[1]), Y(p[0])) : ctx.moveTo(X(p[1]), Y(p[0]))); ctx.stroke(); ctx.setLineDash([]);
+  const dot = (p, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[0]), 5, 0, 7); ctx.fill(); };
+  (S.inflows||[]).forEach(f => dot(f.at, '#185f9e')); (S.exits||[]).forEach(f => dot(f.at, '#16303a'));
+  if(R.burst_at) dot(R.burst_at, '#8e3b46');
+}
+function drawCaption(ctx, Wc, Hc, k){
+  const pad = 22, t = R.minutes[k];
+  ctx.fillStyle = 'rgba(251,252,251,0.92)'; ctx.fillRect(pad, pad, Math.min(Wc - 2 * pad, 640), 104);
+  ctx.fillStyle = '#16303a'; ctx.font = '600 22px "Public Sans", system-ui, sans-serif';
+  ctx.fillText(`${AREA.name}`, pad + 16, pad + 32);
+  ctx.font = '15px "Public Sans", system-ui, sans-serif'; ctx.fillStyle = '#5d7179';
+  const d = describe(R.params); ctx.fillText(d.length > 80 ? d.slice(0, 78) + '…' : d, pad + 16, pad + 56);
+  ctx.fillStyle = '#16303a'; ctx.font = '600 28px "Public Sans", system-ui, sans-serif';
+  ctx.fillText(layer === 'time' ? `${fmtMin(t)} into the event` : (layer === 'maxd' ? 'Maximum depth' : 'Maximum speed'), pad + 16, pad + 92);
+  // legend and progress
+  const lw = 260, lx = Wc - lw - pad, ly = Hc - 70;
+  ctx.fillStyle = 'rgba(251,252,251,0.92)'; ctx.fillRect(lx - 14, ly - 30, lw + 28, 74);
+  const g = ctx.createLinearGradient(lx, 0, lx + lw, 0);
+  (layer === 'speed' ? ['#fae8c8','#f0be6e','#d68232','#a0461e','#5a1e14'] : ['#c6e8f0','#8ccde4','#42a0ce','#186caa','#0c4480','#08244e']).forEach((c, j, a) => g.addColorStop(j / (a.length - 1), c));
+  ctx.fillStyle = g; ctx.fillRect(lx, ly - 8, lw, 12);
+  ctx.fillStyle = '#5d7179'; ctx.font = '13px "Public Sans", system-ui, sans-serif';
+  ctx.fillText(layer === 'speed' ? 'Water speed: 0 to 3 m/s' : 'Water depth: 0 to 1.8 m', lx, ly + 24);
+  ctx.fillText('UK Flood Sandbox, OpenSWMM 6', lx, ly - 14);
+  if(layer === 'time'){ ctx.fillStyle = '#b07a2a'; ctx.fillRect(0, Hc - 6, Wc * (k + 1) / R.frames.length, 6); }
+}
+async function makeVideo(){
+  if(!R) return;
+  setPlaying(false);
+  const rid = R.run || 'unsaved', in3d = view === '3d', name = `simulation_${in3d ? '3d' : 'map'}_${layer}.mp4`;
+  const frames = layer === 'time' ? R.frames.map((_, k) => k) : [i];
+  const keep = i;
+  $('runTitle').textContent = 'Making the video'; $('runDesc').textContent = `${AREA.name}: ${in3d ? '3D view' : 'map view'}, ${frames.length} frames`;
+  $('pfill').style.width = '0%'; $('pstate').textContent = 'Drawing frames'; $('peta').textContent = ''; $('runMsg').innerHTML = '';
+  $('cancelRun').textContent = 'Close'; $('dlgRun').showModal();
+  try {
+    const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+    let Wc = 1600, Hc = 900;
+    if(in3d){ const c3 = document.querySelector('#view3d canvas'); const sc = Math.min(1, 1600 / c3.width); Wc = Math.round(c3.width * sc); Hc = Math.round(c3.height * sc); }
+    cv.width = Wc; cv.height = Hc;
+    const reps = frames.length === 1 ? 15 : 1;           // a still layer becomes a short clip
+    let n = 0;
+    for(const k of frames){
+      show(k); await new Promise(r => setTimeout(r, 60));
+      if(in3d){ ctx.fillStyle = '#e8edee'; ctx.fillRect(0, 0, Wc, Hc); ctx.drawImage(await loadImg(V3.snapshot()), 0, 0, Wc, Hc); }
+      else await drawMapFrame(ctx, Wc, Hc, k);
+      drawCaption(ctx, Wc, Hc, k);
+      const data = cv.toDataURL('image/jpeg', 0.9);
+      for(let r = 0; r < reps; r++){
+        const resp = await fetch(`/api/video/${rid}/frame`, {method:'POST', body: JSON.stringify({k: n++, data})});
+        if(!resp.ok) throw new Error('could not send a frame');
+      }
+      $('pfill').style.width = Math.round(100 * n / (frames.length * reps)) * 0.9 + '%';
+      $('pstate').textContent = `Drawing frames: ${Math.min(n, frames.length * reps)} of ${frames.length * reps}`;
+    }
+    // hold the last picture for a second
+    for(let r = 0; r < 5; r++) await fetch(`/api/video/${rid}/frame`, {method:'POST', body: JSON.stringify({k: n++, data: cv.toDataURL('image/jpeg', 0.9)})});
+    $('pstate').textContent = 'Encoding the MP4';
+    const fin = await fetch(`/api/video/${rid}/finish`, {method:'POST', body: JSON.stringify({fps: 5, name})}).then(r => r.json());
+    if(!fin.ok) throw new Error(fin.error || 'encoding failed');
+    $('pfill').style.width = '100%'; $('pstate').textContent = 'Done';
+    $('runMsg').innerHTML = `<div class="msg warn" style="background:#e9f2ec;color:#1f5130">Saved as <b>${fin.path}</b> (${(fin.size/1e6).toFixed(1)} MB). The download should start now.</div>`;
+    const a = document.createElement('a'); a.href = fin.file; a.download = `${rid}-${name}`; document.body.appendChild(a); a.click(); a.remove();
+  } catch(e){
+    $('runMsg').innerHTML = `<div class="msg err">The video could not be made: ${e.message}</div>`;
+  }
+  show(keep);
+}
+$('videoBtn').onclick = makeVideo;
+async function exportRun(kind){
+  if(!R || !R.run) return;
+  const btn = $(kind === 'gis' ? 'gisRes' : 'reportRes'), label = btn.textContent;
+  btn.disabled = true; btn.textContent = kind === 'gis' ? 'Preparing GIS data…' : 'Writing the report…';
+  try {
+    const body = kind === 'gis' ? {} : {description: describe(R.params), factor: DMG_FACTOR, ref: CMP && CMP.run ? CMP.run : null,
+                                       snapshot: (window.V3 && V3.scene) ? V3.snapshot() : null};
+    const r = await fetch(`/api/export/${R.run}/${kind}`, {method:'POST', body: JSON.stringify(body)}).then(x => x.json());
+    if(!r.ok) throw new Error(r.error || 'failed');
+    const a = document.createElement('a'); a.href = r.file; a.download = `${R.run}-${r.file.split('name=')[1]}`; document.body.appendChild(a); a.click(); a.remove();
+    $('resStatus').textContent = `Saved as ${r.path} (${(r.size / 1e6).toFixed(1)} MB).`;
+  } catch(e){ $('resStatus').textContent = (kind === 'gis' ? 'The GIS export' : 'The report') + ' could not be made: ' + e.message; }
+  btn.disabled = false; btn.textContent = label;
+}
+$('reportRes').onclick = () => exportRun('report');
+document.querySelectorAll('[data-rtab]').forEach(t => t.onclick = () => {
+  document.querySelectorAll('[data-rtab]').forEach(x => x.setAttribute('aria-selected', x === t));
+  document.querySelectorAll('[data-rpanel]').forEach(p => p.hidden = p.dataset.rpanel !== t.dataset.rtab);
+});
+$('gisRes').onclick = () => exportRun('gis');
+$('eaGo').onclick = compareEA;
+$('dmgFactor').oninput = e => { DMG_FACTOR = +e.target.value || 1; if(R) showResults(R); };
+$('videoRes').onclick = () => { $('dlgRes').close(); makeVideo(); };
+
+/* ---------------- results ---------------- */
+function showResults(res){
+  if(!$('dlgRes').open) fillRefs();
+  const s = res.stats, b = CMP ? CMP.stats : null, culv = s.culvert_depth != null;
+  $('resDesc').textContent = describe(res.params) + `. Computed in ${s.runtime_s} s over ${s.cells.toLocaleString()} cells.`;
+  $('thShade').src = S.shade; $('thDepth').src = res.maxd;
+  { const [[a1,o1],[a2,o2]] = res.bounds, w = (o2-o1)*Math.cos((a1+a2)/2*Math.PI/180), h = a2-a1;
+    document.querySelector('.thumb').style.aspectRatio = `${w} / ${h}`; }
+  const rows = [
+    ['Area wet over 0.3 m', s.wet30_ha+' ha', b && b.wet30_ha+' ha']]
+    .concat(hasRiver() ? [['of which off the river', s.wet30_off_ha+' ha', b && b.wet30_off_ha+' ha']] : [])
+    .concat([['Area wet over 0.1 m', s.wet10_ha+' ha', b && b.wet10_ha+' ha'],
+    [hasRiver() ? 'Deepest off the river' : 'Deepest point', s.max_depth_off+' m', b && b.max_depth_off+' m']])
+    .concat(culv ? [['Depth at culvert mouth', s.culvert_depth+' m', b && b.culvert_depth != null ? b.culvert_depth+' m' : '']] : [])
+    .concat([
+    ['Fastest water', s.max_speed+' m/s', b && b.max_speed+' m/s']].concat(estMax(s) != null ? [
+    [`Highest ${s.est_river || 'Tyne'} level here`, estMax(s)+' mAOD', b && estMax(b) != null ? estMax(b)+' mAOD' : '']] : []).concat([
+    [culv ? 'Peak flow at culvert' : 'Peak outflow across edges', s.peak_out.toFixed(1)+' m³/s', b && b.peak_out.toFixed(1)+' m³/s'],
+    ['Peak reached at', fmtMin(s.peak_out_min), b && fmtMin(b.peak_out_min)]])
+    .concat(s.buildings_total ? [['Buildings with water over 0.3 m beside them', `${s.buildings_affected} of ${s.buildings_total}`,
+                                   b && b.buildings_total ? `${b.buildings_affected} of ${b.buildings_total}` : '']] : [])
+    .concat(s.hazard3_ha != null ? [['Hazard to people: significant or extreme', `${(s.hazard3_ha + s.hazard4_ha).toFixed(2)} ha`, b && b.hazard3_ha != null ? `${(b.hazard3_ha + b.hazard4_ha).toFixed(2)} ha` : '']] : [])
+    .concat(s.roads_km ? [['Roads impassable to cars (over 0.3 m)', `${s.roads_over_0_3_km} of ${s.roads_km} km`, b && b.roads_km ? `${b.roads_over_0_3_km} km` : '']] : [])
+    .concat(s.sites_total != null ? [['Key sites with water over 0.3 m at the entrance', `${s.sites_affected} of ${s.sites_total}`, b && b.sites_total != null ? `${b.sites_affected} of ${b.sites_total}` : '']] : [])
+    .concat(s.damage_eur != null ? [['Estimated damage to buildings', money(s.damage_eur), b && b.damage_eur != null ? money(b.damage_eur) : '']] : [])
+    .concat(s.damage_eur != null && b && b.damage_eur != null ? [['Damage avoided compared with that run', money(b.damage_eur - s.damage_eur), '']] : [])
+    .concat(s.measures_cost ? [['Cost of your defences (as entered)', money(s.measures_cost, true), b && b.measures_cost ? money(b.measures_cost, true) : '']] : [])
+    .concat(s.measures_cost && b && b.damage_eur != null ? [['Damage avoided per unit of cost, this storm', ((b.damage_eur - s.damage_eur) * DMG_FACTOR / s.measures_cost).toFixed(2), '']] : [])
+    .concat(s.v_tanks || s.v_pumped ? [['Water held in tanks / pumped away', `${fmtVol(s.v_tanks || 0)} / ${fmtVol(s.v_pumped || 0)}`, b && (b.v_tanks || b.v_pumped) ? `${fmtVol(b.v_tanks || 0)} / ${fmtVol(b.v_pumped || 0)}` : '']] : [])
+    .concat([['Your defences in this run', String(s.measures || 0), b ? String(b.measures || 0) : '']]));
+  const det = [];
+  if(s.sites_list && s.sites_list.length) det.push('<b>Key sites affected:</b> ' + s.sites_list.map(x => `${x.name} (${x.kind.toLowerCase()}, ${x.depth} m)`).join('; ') + '.');
+  if(s.roads_worst && s.roads_worst.length) det.push('<b>Most affected roads:</b> ' + s.roads_worst.slice(0, 6).map(x => `${x.name} (${x.m} m, up to ${x.depth} m deep)`).join('; ') + '.');
+  $('resDetails').innerHTML = det.join('<br>');
+  $('resHead').innerHTML = `<tr><th></th><th>This run</th>${b ? `<th>${CMPLABEL}</th>` : ''}</tr>`;
+  document.querySelectorAll('#dlgRes .rhead').forEach(t => t.innerHTML = $('resHead').innerHTML);
+  // rows go to the tab they belong to: impacts (buildings, roads, sites), costs (damage, defences), water (the rest)
+  const tabOf = l => /^(Buildings|Roads|Key sites)/.test(l) ? 'impact' : /damage|Damage|cost|Cost|defences/.test(l) ? 'cost' : 'water';
+  const row = ([a,y,z]) => `<tr><td>${a}</td><td class="you">${y}</td>${b ? `<td>${z||''}</td>` : ''}</tr>`;
+  const put = (id, tab, empty) => { const rs = rows.filter(r => tabOf(r[0]) === tab);
+    $(id).innerHTML = rs.length ? rs.map(row).join('') : `<tr><td class="empty" colspan="3">${empty}</td></tr>`; };
+  put('resTable', 'water', '');
+  put('resTableImpact', 'impact', 'No impact figures for this run (runs from older versions, or no buildings or roads in the area). Rerun it to see them.');
+  put('resTableCost', 'cost', 'No cost figures for this run.');
+  document.querySelectorAll('#dlgRes .rhead').forEach(t => t.innerHTML = $('resHead').innerHTML);
+  const tyneRun = estMax(s) != null;
+  $('stack').hidden = tyneRun;
+  const parts = [[culv ? 'Left through the culvert' : 'Left across the edges', s.v_out, '#185f9e'], ['Soaked into soil', s.v_infil, '#7aa36a'], ['Still on the surface', s.v_stored, '#8fb3c9']];
+  const tot = parts.reduce((a,p)=>a+p[1],0) || 1;
+  $('stack').innerHTML = parts.map(([n,v,c])=>`<span style="width:${v/tot*100}%;background:${c}" title="${n}"></span>`).join('');
+  $('bkey').innerHTML = tyneRun
+    ? `<span>The ${s.est_river || 'Tyne'} exchanged water with the estuary model across this area's edges: ${fmtVol(s.v_est_in != null ? s.v_est_in : s.v_tyne_in)} in, ${fmtVol(s.v_out)} out (including runoff). ${fmtVol(s.v_infil)} soaked into soil.</span>`
+    : parts.map(([n,v,c])=>`<span><i style="background:${c}"></i>${n}: ${fmtVol(v)}</span>`).join('');
+  const ins = [`${fmtVol(s.v_rain)} of rain on open ground`].concat(s.v_roof ? [`${fmtVol(s.v_roof)} drained from roofs (${s.roof_area_ha} ha)`] : []).concat(s.v_river ? [`${fmtVol(s.v_river)} from the river`] : []).concat(s.v_burst ? [`${fmtVol(s.v_burst)} from the burst main`] : []);
+  const fe = res.forcing && (res.forcing.estuary || res.forcing.tyne);
+  const src = fe && fe.sources ? Object.entries(fe.sources) : [];
+  $('resNote').textContent = (estMax(s) != null ? `Wet areas exclude the ${s.est_river || 'Tyne'}, mapped water bodies and their edges. ` : '') +
+    (src.length ? 'River flows: ' + src.map(([k,v]) => `${k}, ${v}`).join('; ') + '. ' : '') + `Water in: ${ins.join(', ')}. Mass balance error ${Math.abs(s.mb_error_pct).toFixed(3)}%.${s.speed_artefact_cells ? ` ${s.speed_artefact_cells} cells showed unphysical speeds above 10 m/s, a numerical artefact at steep drops in this engine version, and are left out of the fastest-water figure; treat depths right at those spots with caution.` : ''} The ring on the map marks the deepest point${hasRiver() ? ' off the river' : ''}.`;
+  $('dlgRes').showModal();
+}
+$('closeRes').onclick = () => $('dlgRes').close();
+$('replay').onclick = () => { $('dlgRes').close(); show(0); setPlaying(true); };
+$('showResults').onclick = () => R && showResults(R);
+
+/* ---------------- start ---------------- */
+(async () => {
+  setLegend('depth');
+  let list;
+  try { list = await refreshAreas(); }
+  catch(e){ $('runname').textContent = 'Could not reach the local server. Start it with: python server.py'; return; }
+  await openArea(list[0].id);
+  addEventListener('load', () => fit());
+  const cur = await fetch('/api/current').then(r=>r.json()).catch(()=>({}));
+  if(cur.kind){ if(cur.kind==='run' && cur.params && cur.params.area !== AREA.id){ $('areaSel').value = cur.params.area; await openArea(cur.params.area); } attach(cur); }
+})();
+</script>
+</body>
+</html>
