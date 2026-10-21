@@ -1,0 +1,16 @@
+openswmm==6.0.0a4.dev1
+numpy
+h5py
+rasterio
+pyproj
+shapely
+Pillow
+scipy
+requests
+pyogrio
+networkx
+truststore
+imageio-ffmpeg
+reportlab
+netCDF4
+psutil

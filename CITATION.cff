@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "UK Flood Sandbox"
+abstract: >-
+  A local, browser-based tool for exploring surface-water, river and tidal flood scenarios and mitigation
+  options anywhere in the United Kingdom, using the OpenSWMM 6 two-dimensional engine and national open data.
+type: software
+authors:
+  - given-names: "Pablo"
+    family-names: "Martinez"          # to complete
+    affiliation: "Northumbria University"
+    orcid: "https://orcid.org/0000-0003-3397-9617"   # to complete
+version: "0.1.0"
+date-released: "2026-10-21"             # update on release
+license: Apache-2.0
+repository-code: "https://github.com/PabloMarRod/uk-flood-sandbox"   # to complete
+keywords:
+  - flood modelling
+  - surface water flooding
+  - SWMM
+  - digital twin
+  - nature-based solutions
+  - United Kingdom

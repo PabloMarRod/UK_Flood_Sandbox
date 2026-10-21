@@ -1,0 +1,34 @@
+UK Flood Sandbox
+Copyright the UK Flood Sandbox authors (see CITATION.cff). Licensed under the Apache License, Version 2.0.
+
+This product uses third-party software and downloads third-party data at run time. Each remains under its own
+licence. The status column records whether the licence was checked against the provider's published terms while
+preparing this release ("checked") or still needs confirming before redistribution or public deployment
+("to confirm"). Please report any error.
+
+SOFTWARE
+- OpenSWMM 6 engine (openswmm, HydroCouple; Caleb Buahin): Apache-2.0 .................................. checked
+- Leaflet (map viewer): BSD-2-Clause ..................................................................... to confirm
+- three.js (3D view): MIT ................................................................................ to confirm
+- Public Sans typeface (loaded from Google Fonts): SIL Open Font License 1.1 ............................. to confirm
+- Python packages listed in requirements.txt: each under its own licence (see the package metadata).
+
+DATA DOWNLOADED BY THE APP (not redistributed in this repository unless noted)
+- OpenStreetMap: buildings, roads, land cover, water, key sites. (c) OpenStreetMap contributors, Open Database
+  License (ODbL). Layers derived from it (e.g. buildings in GIS exports) carry ODbL obligations. ..... to confirm
+- Environment Agency: LIDAR composite DTM and DSM; flood monitoring and hydrology APIs; Spatial Flood Defences;
+  Risk of Flooding from Surface Water (NaFRA2). Open Government Licence v3.0. ........................ to confirm
+- Ordnance Survey OpenData: OS Open Rivers, OS OpenMap Local (estuary geometry; derived outlines are included
+  in data/estuaries). Open Government Licence v3.0. Contains OS data (c) Crown copyright and database right. to confirm
+- Welsh Government LiDAR and DataMapWales layers; Natural Resources Wales flood defence locations and river
+  level API (the API needs each user's own free key and has its own terms of use). ................. to confirm
+- Scottish Remote Sensing Portal LiDAR (Scottish Government); SEPA time series. .......................... to confirm
+- Northern Ireland: OSNI Open Data 10 m DTM; DfI River Basin LiDAR (OpenDataNI). ......................... to confirm
+- National River Flow Archive (UKCEH): daily flows, used for Welsh level-flow relations. ................. to confirm
+- JRC global flood depth-damage functions database (Huizinga, de Moel and Szewczyk 2017,
+  doi:10.2760/16510): curve values and UK maximum damage values are included in core.py. ............... to confirm
+- Esri basemap tiles (World Light Gray): used by the 2D map; review Esri's terms of use before any public
+  or hosted deployment, or switch to another basemap. .................................................... to confirm
+
+The Jesmond Vale preset in areas/jesmond-vale contains terrain derived from Environment Agency LIDAR and
+OpenStreetMap data, and Environment Agency gauge records for 28 June 2012.
