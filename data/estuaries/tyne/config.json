@@ -1,0 +1,91 @@
+{
+ "id": "tyne",
+ "name": "Tidal Tyne",
+ "river_label": "River Tyne",
+ "river_names": [
+  "River Tyne",
+  "Tyne"
+ ],
+ "limit_name": "Wylam",
+ "start": [
+  412080,
+  564650
+ ],
+ "end": [
+  436420,
+  568310
+ ],
+ "tide_measure": "E70939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "North Shields",
+ "flows": [
+  {
+   "key": "tyne",
+   "name": "Tyne at Bywell",
+   "hydrology": "e786e60f-a0f1-4955-aa57-f22ba39c7427",
+   "rt_stage": "023001-level-stage-i-15_min-m",
+   "at": "start",
+   "lag_min": 60
+  },
+  {
+   "key": "derwent",
+   "name": "Derwent at Rowlands Gill",
+   "hydrology": "1fede3ae-8d65-47ae-b9a9-2aab05fdda29",
+   "rt_stage": "023007-level-stage-i-15_min-m",
+   "at": [
+    420798,
+    563411
+   ]
+  },
+  {
+   "key": "team",
+   "name": "Team at Team Valley",
+   "hydrology": "535584fb-878b-41fb-a940-b97bdbd1bd8d",
+   "rt_stage": "023017-level-stage-i-15_min-m",
+   "at": [
+    423470,
+    562782
+   ]
+  },
+  {
+   "key": "ouseburn",
+   "name": "Ouse Burn at Crag Hall",
+   "hydrology": "438e6059-f150-4dea-b17a-b21cae02ded7",
+   "rt_stage": null,
+   "at": [
+    426429,
+    564015
+   ]
+  }
+ ],
+ "check_gauges": [],
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), not survey data. Bywell-to-Wylam lag is assumed.",
+ "bed_profile": [
+  [
+   0,
+   0.5
+  ],
+  [
+   7000,
+   -1.5
+  ],
+  [
+   13500,
+   -5.0
+  ],
+  [
+   24500,
+   -8.0
+  ]
+ ],
+ "min_width": 40,
+ "default_width": 60,
+ "manning": 0.03,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "defaults": {
+  "river_base": 40,
+  "river_peak": 400
+ },
+ "calibration": null,
+ "status": "assumed"
+}

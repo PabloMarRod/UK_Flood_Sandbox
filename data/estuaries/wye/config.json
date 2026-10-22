@@ -1,0 +1,61 @@
+{
+ "id": "wye",
+ "name": "Tidal Wye",
+ "river_label": "River Wye",
+ "river_names": [
+  "River Wye",
+  "Afon Gwy"
+ ],
+ "limit_name": "Bigsweir",
+ "tide_measure": "E72639-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Avonmouth",
+ "flows": [
+  {
+   "key": "wye",
+   "name": "Wye at Redbrook",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4028,
+   "nrw_parameter": 201,
+   "nrfa_station": "55023"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   2.0
+  ],
+  [
+   30000,
+   -6.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  354341.4,
+  207465.7
+ ],
+ "end": [
+  354950.5,
+  190664.9
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 1000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 40,
+  "river_peak": 480
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 13.6,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Avonmouth, 13.6 km from the estuary mouth (a stand-in gauge). River flows come from Natural Resources Wales or the EA (not yet connected); otherwise the default base flow is used. Tidal limit position is approximate."
+}

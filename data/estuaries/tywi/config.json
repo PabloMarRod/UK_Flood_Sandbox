@@ -1,0 +1,62 @@
+{
+ "id": "tywi",
+ "name": "Tywi Estuary",
+ "river_label": "Afon Tywi",
+ "river_names": [
+  "Afon Tywi",
+  "River Towy",
+  "River Tywi"
+ ],
+ "limit_name": "Carmarthen",
+ "tide_measure": "E72939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Mumbles",
+ "flows": [
+  {
+   "key": "tywi",
+   "name": "Tywi at Capel Dewi",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4193,
+   "nrw_parameter": 168,
+   "nrfa_station": "60010"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  241362.5,
+  220224.9
+ ],
+ "end": [
+  235842.3,
+  209493.5
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 2500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 25,
+  "river_peak": 300
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 35.0,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Mumbles, 35.0 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

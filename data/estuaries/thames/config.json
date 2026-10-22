@@ -1,0 +1,262 @@
+{
+ "id": "thames",
+ "name": "Tidal Thames",
+ "river_label": "River Thames",
+ "river_names": [
+  "River Thames"
+ ],
+ "limit_name": "Teddington",
+ "start": [
+  517007.5,
+  171407.4
+ ],
+ "end": [
+  562323.7,
+  175665.6
+ ],
+ "tide_measure": "0020-level-tidal_level-i-15_min-mAOD",
+ "tide_gauge": "Tilbury",
+ "flows": [
+  {
+   "key": "thames",
+   "name": "Thames at Kingston",
+   "hydrology": "8496ce69-482c-406a-a2f0-ac418ef8f099",
+   "rt_flow": "3400TH-flow--i-15_min-m3_s",
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "check_gauges": [
+  {
+   "name": "Teddington Lock Tail",
+   "measure": "3401TH_TAOD-level-tidal_level-i-15_min-mAOD",
+   "x": 517007.5,
+   "y": 171407.4
+  },
+  {
+   "name": "Richmond",
+   "measure": "0009-level-tidal_level-i-15_min-mAOD",
+   "x": 517069.9,
+   "y": 175047.1
+  },
+  {
+   "name": "Hammersmith",
+   "measure": "0010-level-tidal_level-i-15_min-mAOD",
+   "x": 522657.0,
+   "y": 178260.8
+  },
+  {
+   "name": "Chelsea",
+   "measure": "4230TH-level-tidal_level-i-15_min-mAOD",
+   "x": 528574.8,
+   "y": 177739.3
+  },
+  {
+   "name": "Westminster",
+   "measure": "0006-level-tidal_level-i-15_min-mAOD",
+   "x": 530317.1,
+   "y": 179697.6
+  },
+  {
+   "name": "Tower Pier",
+   "measure": "0007-level-tidal_level-i-15_min-mAOD",
+   "x": 533437.8,
+   "y": 180401.7
+  },
+  {
+   "name": "Silvertown",
+   "measure": "0001-level-tidal_level-i-15_min-mAOD",
+   "x": 542578.4,
+   "y": 179614.9
+  },
+  {
+   "name": "Charlton",
+   "measure": "0003-level-tidal_level-i-15_min-mAOD",
+   "x": 540345.3,
+   "y": 179486.0
+  },
+  {
+   "name": "Erith",
+   "measure": "0018-level-tidal_level-i-15_min-mAOD",
+   "x": 551938.1,
+   "y": 178138.6
+  }
+ ],
+ "_note": "Centreline: OS Open Rivers. Water: OS OpenMap Local (TidalWater, SurfaceWater_Area). Bed levels: calibrated against the tideway gauges (see calibration); still not surveyed. Not modelled: Richmond half-tide lock and weir, Thames Barrier closures. Teddington Lock Tail is excluded from calibration and Richmond is fitted on high water only (Richmond half-tide lock and weir hold up low water).",
+ "bed_profile": [
+  [
+   0,
+   1.25
+  ],
+  [
+   25000,
+   -5.0
+  ],
+  [
+   35000,
+   -6.0
+  ],
+  [
+   55000,
+   -7.5
+  ],
+  [
+   75000,
+   -12.0
+  ]
+ ],
+ "min_width": 50,
+ "default_width": 100,
+ "max_width": 3000,
+ "manning": 0.025,
+ "bank_height": 30.0,
+ "spacing": 500,
+ "defaults": {
+  "river_base": 60,
+  "river_peak": 400
+ },
+ "calibration": {
+  "method": "coordinate search on bed profile points and Manning's n; objective: high/low water errors and high-water timing at the tideway gauges",
+  "calibration_period": [
+   "2026-10-01T00:00",
+   48.0
+  ],
+  "calibration_gauges": [
+   {
+    "gauge": "Teddington Lock Tail",
+    "ch_km": 0.0,
+    "rmse": 0.741,
+    "hw_err": 0.103,
+    "lw_err": -0.636,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": true
+   },
+   {
+    "gauge": "Richmond",
+    "ch_km": 5.7,
+    "rmse": 0.636,
+    "hw_err": -0.018,
+    "lw_err": 0.876,
+    "hw_lag_min": 0.0,
+    "lw_used": false,
+    "skip": false
+   },
+   {
+    "gauge": "Westminster",
+    "ch_km": 27.6,
+    "rmse": 0.339,
+    "hw_err": -0.015,
+    "lw_err": 0.067,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Tower Pier",
+    "ch_km": 31.3,
+    "rmse": 0.331,
+    "hw_err": 0.037,
+    "lw_err": 0.27,
+    "hw_lag_min": -3.8,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Silvertown",
+    "ch_km": 45.5,
+    "rmse": 0.18,
+    "hw_err": -0.078,
+    "lw_err": 0.083,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Charlton",
+    "ch_km": 43.2,
+    "rmse": 0.217,
+    "hw_err": -0.052,
+    "lw_err": -0.012,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   }
+  ],
+  "validation_period": [
+   "2026-09-15T00:00",
+   48
+  ],
+  "validation_gauges": [
+   {
+    "gauge": "Teddington Lock Tail",
+    "ch_km": 0.0,
+    "rmse": 0.588,
+    "hw_err": -0.268,
+    "lw_err": -0.533,
+    "hw_lag_min": 30.0,
+    "lw_used": true,
+    "skip": true
+   },
+   {
+    "gauge": "Richmond",
+    "ch_km": 5.7,
+    "rmse": 0.634,
+    "hw_err": 0.056,
+    "lw_err": 0.928,
+    "hw_lag_min": -3.8,
+    "lw_used": false,
+    "skip": false
+   },
+   {
+    "gauge": "Westminster",
+    "ch_km": 27.6,
+    "rmse": 0.307,
+    "hw_err": -0.003,
+    "lw_err": 0.074,
+    "hw_lag_min": -5.0,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Tower Pier",
+    "ch_km": 31.3,
+    "rmse": 0.334,
+    "hw_err": 0.054,
+    "lw_err": 0.308,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Silvertown",
+    "ch_km": 45.5,
+    "rmse": 0.305,
+    "hw_err": -0.075,
+    "lw_err": 0.836,
+    "hw_lag_min": -7.5,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Charlton",
+    "ch_km": 43.2,
+    "rmse": 0.212,
+    "hw_err": -0.055,
+    "lw_err": 0.005,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   }
+  ],
+  "boundary": "Tilbury recorded tide; Thames at Kingston flow",
+  "date": "2026-10-10"
+ },
+ "calibration_skip": [
+  "Teddington Lock Tail"
+ ],
+ "calibration_hw_only": [
+  "Richmond"
+ ],
+ "status": "calibrated"
+}

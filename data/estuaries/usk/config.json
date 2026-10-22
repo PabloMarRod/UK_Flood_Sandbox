@@ -1,0 +1,64 @@
+{
+ "id": "usk",
+ "name": "Usk Estuary",
+ "river_label": "River Usk",
+ "river_names": [
+  "River Usk",
+  "Afon Wysg"
+ ],
+ "limit_name": "Newbridge-on-Usk",
+ "tide_measure": "E72839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Newport",
+ "flows": [
+  {
+   "key": "usk",
+   "name": "Usk at Chainbridge",
+   "hydrology": "none",
+   "at": "start",
+   "lag_min": 0,
+   "nrw_station": null,
+   "nrw_location": 4039,
+   "nrw_parameter": 176,
+   "nrfa_station": "56001"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   10000,
+   -3.0
+  ],
+  [
+   22000,
+   -8.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  336557.3,
+  196713.3
+ ],
+ "end": [
+  331632.3,
+  183918.9
+ ],
+ "check_gauges": [],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 1500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 3000,
+ "corridor_factor": 0.5,
+ "defaults": {
+  "river_base": 30,
+  "river_peak": 400
+ },
+ "calibration": null,
+ "_note": "Welsh estuary. Bed levels are ASSUMPTIONS (mAOD). River flows come from Natural Resources Wales, whose data service needs a free key: put it in settings.json (nrw_api_key) and the NRW station id in this config (flows[0].nrw_station). Until then recorded runs use the default base flow.",
+ "status": "assumed"
+}
