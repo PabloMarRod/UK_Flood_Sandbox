@@ -1,0 +1,68 @@
+{
+ "id": "severn",
+ "name": "Severn Estuary",
+ "river_label": "River Severn",
+ "river_names": [
+  "River Severn"
+ ],
+ "limit_name": "Gloucester",
+ "start": [
+  51.868,
+  -2.255
+ ],
+ "end": [
+  51.5,
+  -2.7285
+ ],
+ "tide_measure": "E72639-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Avonmouth",
+ "check_gauges": [
+  [
+   "Oldbury",
+   "531191-level-tidal_level-i-15_min-mAOD",
+   51.6314,
+   -2.5753
+  ]
+ ],
+ "flows": [
+  {
+   "key": "severn",
+   "name": "Severn at Deerhurst",
+   "hydrology": "fcb795f4-07bc-4ae0-8372-041644e7f275",
+   "at": "start",
+   "lag_min": 120,
+   "rt_flow": "2606-flow--i-15_min-m3_s"
+  }
+ ],
+ "os_tiles": [
+  "SO",
+  "ST"
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   20000,
+   -2.0
+  ],
+  [
+   45000,
+   -7.0
+  ],
+  [
+   65000,
+   -15.0
+  ]
+ ],
+ "spacing": 500,
+ "max_width": 6000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 60,
+  "river_peak": 500
+ },
+ "note": "Bed levels are ASSUMPTIONS (mAOD) until calibrated against Oldbury. The Severn has one of the largest tidal ranges in the world and a tidal bore, which a 1D model with 500 m nodes represents only approximately. Deerhurst-to-Gloucester lag assumed.",
+ "max_gap": 25000
+}

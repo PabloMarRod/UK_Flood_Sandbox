@@ -1,0 +1,53 @@
+{
+ "id": "cleddau",
+ "name": "Daugleddau (Milford Haven)",
+ "river_label": "Western Cleddau",
+ "river_names": [
+  "Western Cleddau",
+  "Afon Cleddau Wen",
+  "Daugleddau",
+  "Cleddau"
+ ],
+ "limit_name": "Haverfordwest",
+ "start": [
+  51.8,
+  -4.968
+ ],
+ "end": [
+  51.7074,
+  -5.0518
+ ],
+ "tide_measure": "E73039-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Milford Haven",
+ "flows": [
+  {
+   "key": "cleddau",
+   "name": "Western Cleddau (NRW gauge)",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   30000,
+   -12.0
+  ]
+ ],
+ "spacing": 250,
+ "max_width": 3000,
+ "corridor_factor": 1.0,
+ "max_gap": 5000,
+ "min_width": 15,
+ "defaults": {
+  "river_base": 8,
+  "river_peak": 96
+ },
+ "tide_proxy_km": null,
+ "note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Milford Haven. River flows come from Natural Resources Wales (key needed); otherwise the default base flow is used. Tidal limit position is approximate."
+}

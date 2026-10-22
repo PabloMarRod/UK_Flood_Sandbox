@@ -1,0 +1,53 @@
+{
+ "id": "lagan",
+ "name": "Tidal Lagan (Belfast)",
+ "river_label": "River Lagan",
+ "river_names": [
+  "River Lagan",
+  "Lagan"
+ ],
+ "limit_name": "Lagan Weir",
+ "start": [
+  54.6005,
+  -5.9215
+ ],
+ "end": [
+  54.633,
+  -5.88
+ ],
+ "tide_measure": "E73839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Bangor",
+ "flows": [
+  {
+   "key": "lagan",
+   "name": "Lagan (no real-time flow data for Northern Ireland)",
+   "hydrology": "none",
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   -1.0
+  ],
+  [
+   6000,
+   -9.0
+  ]
+ ],
+ "spacing": 100,
+ "max_width": 1500,
+ "corridor_factor": 1.0,
+ "max_gap": 4000,
+ "min_width": 30,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 120
+ },
+ "tide_proxy_km": 14.4,
+ "geometry_source": "osm_api",
+ "pad": 1500,
+ "status": "assumed",
+ "note": "Northern Ireland estuary. The Lagan Weir holds the river above it, so the model runs from the weir to Belfast harbour. Bed levels are ASSUMPTIONS. Tide from Bangor (Belfast Lough), 14 km away. No real-time river flow data is published for Northern Ireland, so the default flow is used. Geometry from OpenStreetMap; terrain from the OSNI 10 m DTM, whose heights refer to the Belfast datum."
+}

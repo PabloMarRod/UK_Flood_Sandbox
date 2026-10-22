@@ -1,0 +1,52 @@
+{
+ "id": "aberdee",
+ "name": "Aberdeen Dee",
+ "river_label": "River Dee",
+ "river_names": [
+  "River Dee"
+ ],
+ "limit_name": "Bridge of Dee",
+ "start": [
+  57.129,
+  -2.111
+ ],
+ "end": [
+  57.144,
+  -2.08
+ ],
+ "tide_measure": "E70739-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Aberdeen",
+ "flows": [
+  {
+   "key": "aberdee",
+   "name": "Dee at Park (SEPA)",
+   "hydrology": "none",
+   "sepa_ts": "67952010",
+   "at": "start",
+   "lag_min": 60
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   60000,
+   -8.0
+  ]
+ ],
+ "spacing": 100,
+ "max_width": 600,
+ "corridor_factor": 1.0,
+ "max_gap": 1500,
+ "min_width": 20,
+ "width_mode": null,
+ "defaults": {
+  "river_base": 40,
+  "river_peak": 320
+ },
+ "tide_proxy_km": null,
+ "note": "Scottish estuary. Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Aberdeen. River flow from SEPA (open data). No open national flood-defence dataset is available for Scotland, so defences are only those in the terrain. Tidal limit position is approximate.",
+ "status": "assumed"
+}

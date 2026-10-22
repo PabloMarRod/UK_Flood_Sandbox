@@ -1,0 +1,182 @@
+{
+ "id": "humber",
+ "name": "Humber Estuary",
+ "river_label": "Humber",
+ "river_names": [
+  "River Ouse",
+  "Humber",
+  "River Humber",
+  "River Trent"
+ ],
+ "limit_name": "Naburn Lock (Ouse) and Cromwell Lock (Trent)",
+ "start": [
+  53.9037,
+  -1.0857
+ ],
+ "end": [
+  53.6302,
+  -0.1874
+ ],
+ "tide_measure": "E71139-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Immingham",
+ "branches": [
+  {
+   "name": "Tidal Trent",
+   "start": [
+    53.1342,
+    -0.8075
+   ],
+   "bed_profile": [
+    [
+     0,
+     2.0
+    ],
+    [
+     40000,
+     -0.5
+    ],
+    [
+     90000,
+     -3.5
+    ]
+   ]
+  }
+ ],
+ "check_gauges": [
+  [
+   "Hull",
+   "L3203-level-tidal_level-i-15_min-mAOD",
+   53.7399,
+   -0.3307
+  ],
+  [
+   "New Holland",
+   "E1555-level-tidal_level-i-15_min-mAOD",
+   53.7043,
+   -0.365
+  ],
+  [
+   "Goxhill",
+   "E1152-level-tidal_level-i-15_min-mAOD",
+   53.7133,
+   -0.3046
+  ],
+  [
+   "South Ferriby",
+   "E1442-level-tidal_level-i-15_min-mAOD",
+   53.6773,
+   -0.5254
+  ],
+  [
+   "Brough",
+   "L3491-level-tidal_level-i-15_min-mAOD",
+   53.7271,
+   -0.5858
+  ],
+  [
+   "Keadby (Trent)",
+   "4098-level-tidal_level-i-5_min-mAOD",
+   53.592,
+   -0.7382
+  ]
+ ],
+ "flows": [
+  {
+   "key": "ouse",
+   "name": "Ouse at Skelton",
+   "hydrology": "213d70b2-894b-406b-9dc3-31d3ccec7f54",
+   "at": "start",
+   "lag_min": 120,
+   "rt_stage": "F2405-level-stage-i-15_min-m"
+  },
+  {
+   "key": "trent",
+   "name": "Trent at North Muskham",
+   "hydrology": "15eae722-7f1f-41cb-a93e-2acdeca10a0a",
+   "at": "branch:Tidal Trent",
+   "lag_min": 0,
+   "rt_flow": "4022-flow--i-15_min-Ml_d",
+   "rt_flow_factor": 0.011574074074074073
+  },
+  {
+   "key": "wharfe",
+   "name": "Wharfe at Tadcaster",
+   "hydrology": "b9933a62-f326-4d77-9206-ebb335161831",
+   "at": [
+    53.8355,
+    -1.1305
+   ],
+   "lag_min": 120,
+   "rt_flow": "F2002-flow-logged-i-15_min-m3_s"
+  },
+  {
+   "key": "derwent",
+   "name": "Derwent at Buttercrambe",
+   "hydrology": "605097d0-d67a-4e16-969a-e5fe8bbd7fd8",
+   "at": [
+    53.7495,
+    -0.9685
+   ],
+   "lag_min": 300,
+   "rt_stage": "F2807-level-stage-i-15_min-m"
+  },
+  {
+   "key": "aire",
+   "name": "Aire at Beal",
+   "hydrology": "daa47a41-8f5a-4edb-9840-e0a13533cc64",
+   "at": [
+    53.7196,
+    -0.9015
+   ],
+   "lag_min": 180,
+   "rt_stage": "F1806-level-stage-i-15_min-m"
+  },
+  {
+   "key": "don",
+   "name": "Don at Doncaster",
+   "hydrology": "11190c65-ef31-4e9d-9456-6e999a94cdba",
+   "at": [
+    53.704,
+    -0.875
+   ],
+   "lag_min": 300,
+   "rt_flow": "F0908-flow-logged-i-15_min-m3_s"
+  }
+ ],
+ "os_tiles": [
+  "SE",
+  "TA",
+  "SK"
+ ],
+ "bed_profile": [
+  [
+   0,
+   0.0
+  ],
+  [
+   30000,
+   -1.5
+  ],
+  [
+   60000,
+   -3.5
+  ],
+  [
+   80000,
+   -6.0
+  ],
+  [
+   100000,
+   -12.0
+  ]
+ ],
+ "spacing": 500,
+ "max_width": 8000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 80,
+  "river_peak": 600
+ },
+ "note": "Bed levels are ASSUMPTIONS (mAOD) until calibrated against the Humber gauges. Main channel: tidal Ouse from Naburn Lock and the Humber to Immingham; branch: tidal Trent from Cromwell Lock. Gauge-to-tidal-limit lags are assumed. Hull and other tidal barriers are not modelled.",
+ "max_gap": 15000
+}

@@ -1,0 +1,51 @@
+{
+ "id": "clwyd",
+ "name": "Clwyd Estuary",
+ "river_label": "Afon Clwyd",
+ "river_names": [
+  "Afon Clwyd",
+  "River Clwyd"
+ ],
+ "limit_name": "Rhuddlan",
+ "start": [
+  53.292,
+  -3.465
+ ],
+ "end": [
+  53.322,
+  -3.497
+ ],
+ "tide_measure": "E73339-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Llandudno",
+ "flows": [
+  {
+   "key": "clwyd",
+   "name": "Afon Clwyd (NRW gauge)",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   30000,
+   -3.0
+  ]
+ ],
+ "spacing": 100,
+ "max_width": 500,
+ "corridor_factor": 1.0,
+ "max_gap": 5000,
+ "min_width": 15,
+ "defaults": {
+  "river_base": 8,
+  "river_peak": 96
+ },
+ "tide_proxy_km": 21.8,
+ "note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Llandudno, 21.8 km from the estuary mouth (a stand-in gauge). River flows come from Natural Resources Wales (key needed); otherwise the default base flow is used. Tidal limit position is approximate."
+}

@@ -1,0 +1,51 @@
+{
+ "id": "neath",
+ "name": "Neath Estuary",
+ "river_label": "River Neath",
+ "river_names": [
+  "River Neath",
+  "Afon Nedd"
+ ],
+ "limit_name": "Neath",
+ "start": [
+  51.663,
+  -3.806
+ ],
+ "end": [
+  51.62,
+  -3.85
+ ],
+ "tide_measure": "E72939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Mumbles",
+ "flows": [
+  {
+   "key": "neath",
+   "name": "River Neath (NRW gauge)",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   0.5
+  ],
+  [
+   30000,
+   -5.0
+  ]
+ ],
+ "spacing": 250,
+ "max_width": 1000,
+ "corridor_factor": 1.0,
+ "max_gap": 5000,
+ "min_width": 15,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 180
+ },
+ "tide_proxy_km": 10.3,
+ "note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Mumbles, 10.3 km from the estuary mouth (a stand-in gauge). River flows come from Natural Resources Wales (key needed); otherwise the default base flow is used. Tidal limit position is approximate."
+}

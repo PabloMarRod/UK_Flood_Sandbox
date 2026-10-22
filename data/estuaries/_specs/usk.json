@@ -1,0 +1,54 @@
+{
+ "id": "usk",
+ "name": "Usk Estuary",
+ "river_label": "River Usk",
+ "river_names": [
+  "River Usk",
+  "Afon Wysg"
+ ],
+ "limit_name": "Newbridge-on-Usk",
+ "start": [
+  51.6656,
+  -2.9187
+ ],
+ "end": [
+  51.55,
+  -2.9874
+ ],
+ "tide_measure": "E72839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Newport",
+ "flows": [
+  {
+   "key": "usk",
+   "name": "Usk (NRW gauge, needs an NRW data key)",
+   "hydrology": "none",
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "os_tiles": [
+  "ST"
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   10000,
+   -3.0
+  ],
+  [
+   22000,
+   -8.0
+  ]
+ ],
+ "spacing": 250,
+ "max_width": 1500,
+ "defaults": {
+  "river_base": 30,
+  "river_peak": 400
+ },
+ "note": "Welsh estuary. Bed levels are ASSUMPTIONS (mAOD). River flows come from Natural Resources Wales, whose data service needs a key, so recorded runs use the default base flow unless one is configured.",
+ "max_gap": 3000
+}

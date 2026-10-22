@@ -1,0 +1,51 @@
+{
+ "id": "dyfi",
+ "name": "Dyfi Estuary",
+ "river_label": "Afon Dyfi",
+ "river_names": [
+  "Afon Dyfi",
+  "River Dovey"
+ ],
+ "limit_name": "Derwenlas",
+ "start": [
+  52.59,
+  -3.879
+ ],
+ "end": [
+  52.542,
+  -4.049
+ ],
+ "tide_measure": "E73239-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Barmouth",
+ "flows": [
+  {
+   "key": "dyfi",
+   "name": "Afon Dyfi (NRW gauge)",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.5
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "spacing": 250,
+ "max_width": 3000,
+ "corridor_factor": 1.0,
+ "max_gap": 5000,
+ "min_width": 15,
+ "defaults": {
+  "river_base": 20,
+  "river_peak": 240
+ },
+ "tide_proxy_km": 19.7,
+ "note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Barmouth, 19.7 km from the estuary mouth (a stand-in gauge). River flows come from Natural Resources Wales (key needed); otherwise the default base flow is used. Tidal limit position is approximate."
+}

@@ -1,0 +1,68 @@
+{
+ "id": "exe",
+ "name": "Exe Estuary",
+ "river_label": "River Exe",
+ "river_names": [
+  "River Exe"
+ ],
+ "limit_name": "Trews Weir (Exeter)",
+ "start": [
+  50.714,
+  -3.5222
+ ],
+ "end": [
+  50.6168,
+  -3.4242
+ ],
+ "tide_measure": "45127-level-tidal_level-i-15_min-mAOD",
+ "tide_gauge": "Exmouth",
+ "check_gauges": [
+  [
+   "Lympstone",
+   "50180-level-tidal_level-i-15_min-mAOD",
+   50.648,
+   -3.4319
+  ]
+ ],
+ "flows": [
+  {
+   "key": "exe",
+   "name": "Exe at Thorverton",
+   "hydrology": "3c4d4f78-2d0e-474a-b884-65a9daca18fb",
+   "at": "start",
+   "lag_min": 120
+  }
+ ],
+ "os_tiles": [
+  "SX"
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   3000,
+   0.0
+  ],
+  [
+   8000,
+   -1.0
+  ],
+  [
+   14000,
+   -3.0
+  ],
+  [
+   17000,
+   -6.0
+  ]
+ ],
+ "spacing": 250,
+ "max_width": 2500,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 250
+ },
+ "note": "Bed levels are ASSUMPTIONS (mAOD), to be calibrated against Lympstone. Thorverton-to-Exeter lag (120 min) is assumed. The Exeter Ship Canal is not modelled."
+}

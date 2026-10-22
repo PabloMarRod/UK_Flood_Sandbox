@@ -1,0 +1,52 @@
+{
+ "id": "forth",
+ "name": "Forth Estuary",
+ "river_label": "River Forth",
+ "river_names": [
+  "River Forth"
+ ],
+ "limit_name": "Stirling (Craigforth)",
+ "start": [
+  56.126,
+  -3.941
+ ],
+ "end": [
+  55.99,
+  -3.182
+ ],
+ "tide_measure": "E70839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Leith",
+ "flows": [
+  {
+   "key": "forth",
+   "name": "Forth at Craigforth (SEPA)",
+   "hydrology": "none",
+   "sepa_ts": "67565010",
+   "at": "start",
+   "lag_min": 60
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   60000,
+   -12.0
+  ]
+ ],
+ "spacing": 500,
+ "max_width": 10000,
+ "corridor_factor": 1.0,
+ "max_gap": 40000,
+ "min_width": 20,
+ "width_mode": "sum",
+ "defaults": {
+  "river_base": 40,
+  "river_peak": 320
+ },
+ "tide_proxy_km": null,
+ "note": "Scottish estuary. Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Leith. River flow from SEPA (open data). No open national flood-defence dataset is available for Scotland, so defences are only those in the terrain. Tidal limit position is approximate.",
+ "status": "assumed"
+}
