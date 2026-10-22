@@ -937,7 +937,7 @@ def _write_cf(path, A, q, f, grid, minutes, MD, MV, HZC):
             v = var(name, ("y", "x"), **att); v[:] = np.where(np.isfinite(arr), arr, -9999.0)
         hz = var("hazard_class", ("y", "x"), dtype="i1", long_name="hazard to people (Defra/EA FD2320)",
                  flag_values=np.array([0, 1, 2, 3, 4], np.int8), flag_meanings="none low moderate significant extreme")
-        hz[:] = np.where(np.isfinite(MD), HZC, -1).astype(np.int8)
+        hz[:] = np.where(np.isfinite(MD), HZC.astype(np.int8), np.int8(-1))
         nc.Conventions = "CF-1.8"
         nc.title = f"UK Flood Sandbox: {A['name']}"
         nc.institution = "UK Flood Sandbox (local run)"
