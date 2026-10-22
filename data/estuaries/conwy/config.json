@@ -1,0 +1,61 @@
+{
+ "id": "conwy",
+ "name": "Conwy Estuary",
+ "river_label": "Afon Conwy",
+ "river_names": [
+  "Afon Conwy",
+  "River Conwy"
+ ],
+ "limit_name": "Llanrwst",
+ "tide_measure": "E73339-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Llandudno",
+ "flows": [
+  {
+   "key": "conwy",
+   "name": "Conwy at Cwmlanerch",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4145,
+   "nrw_parameter": 28,
+   "nrfa_station": "66011"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   2.0
+  ],
+  [
+   30000,
+   -5.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  279884.0,
+  361491.7
+ ],
+ "end": [
+  278132.1,
+  379345.0
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 2000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 20,
+  "river_peak": 240
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 3.9,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Llandudno, 3.9 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}
