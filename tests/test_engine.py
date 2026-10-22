@@ -20,3 +20,7 @@ def test_short_preset_run(tmp_path):
     assert abs(s["mb_error_pct"]) < 0.05
     assert s["max_depth"] > 0
     assert (run / "time_series.nc").exists()
+    import netCDF4
+    with netCDF4.Dataset(str(run / "time_series.nc")) as nc:
+        assert nc.Conventions == "CF-1.8"                  # set last, so present only if the file was written fully
+        assert "hazard_class" in nc.variables
