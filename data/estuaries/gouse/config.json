@@ -1,0 +1,59 @@
+{
+ "id": "gouse",
+ "name": "Tidal Great Ouse",
+ "river_label": "Great Ouse",
+ "river_names": [
+  "River Great Ouse",
+  "Great Ouse"
+ ],
+ "limit_name": "Denver Sluice",
+ "tide_measure": "E47907-level-tidal_level-i-15_min-mAOD",
+ "tide_gauge": "King's Lynn",
+ "flows": [
+  {
+   "key": "gouse",
+   "name": "Great Ouse at Offord",
+   "hydrology": "dffdaf0f-e68b-465b-bc33-3b7aafbf6381_U33026",
+   "at": "start",
+   "lag_min": 1440,
+   "rt_stage": "E61804-level-stage-i-15_min-mAOD"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   -0.5
+  ],
+  [
+   12000,
+   -2.0
+  ],
+  [
+   22000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  558482.2,
+  301110.1
+ ],
+ "end": [
+  561625.7,
+  319772.7
+ ],
+ "check_gauges": [],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 2000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "defaults": {
+  "river_base": 20,
+  "river_peak": 200
+ },
+ "calibration": null,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Denver Sluice controls what reaches the tidal river; the flow here is Offord's, delayed by an assumed 24 hours, which is only a rough proxy. Sluice operation is not modelled.",
+ "status": "assumed"
+}

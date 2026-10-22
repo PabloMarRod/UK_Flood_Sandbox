@@ -1,0 +1,111 @@
+{
+ "id": "exe",
+ "name": "Exe Estuary",
+ "river_label": "River Exe",
+ "river_names": [
+  "River Exe"
+ ],
+ "limit_name": "Trews Weir (Exeter)",
+ "tide_measure": "45127-level-tidal_level-i-15_min-mAOD",
+ "tide_gauge": "Exmouth",
+ "flows": [
+  {
+   "key": "exe",
+   "name": "Exe at Thorverton",
+   "hydrology": "3c4d4f78-2d0e-474a-b884-65a9daca18fb",
+   "at": "start",
+   "lag_min": 120,
+   "rt_stage": "45118-level-stage-i-15_min-m"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   -0.5
+  ],
+  [
+   3000,
+   0.0
+  ],
+  [
+   8000,
+   -0.6
+  ],
+  [
+   14000,
+   -2.6
+  ],
+  [
+   17000,
+   -6.0
+  ]
+ ],
+ "start": [
+  292628.2,
+  91590.9
+ ],
+ "end": [
+  299338.9,
+  80645.1
+ ],
+ "check_gauges": [
+  {
+   "name": "Lympstone",
+   "measure": "50180-level-tidal_level-i-15_min-mAOD",
+   "x": 298861.2,
+   "y": 84124.8
+  }
+ ],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 2500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 250
+ },
+ "calibration": {
+  "method": "coordinate search, high water and timing at Lympstone",
+  "calibration_period": [
+   "2026-10-01T00:00",
+   24.0
+  ],
+  "calibration_gauges": [
+   {
+    "gauge": "Lympstone",
+    "ch_km": 10.0,
+    "rmse": 0.796,
+    "hw_err": -0.007,
+    "lw_err": -1.617,
+    "hw_lag_min": 7.5,
+    "lw_used": false,
+    "skip": false
+   }
+  ],
+  "validation_period": [
+   "2026-09-15T00:00",
+   24
+  ],
+  "validation_gauges": [
+   {
+    "gauge": "Lympstone",
+    "ch_km": 10.0,
+    "rmse": 0.733,
+    "hw_err": -0.025,
+    "lw_err": -1.466,
+    "hw_lag_min": 0.0,
+    "lw_used": false,
+    "skip": false
+   }
+  ],
+  "date": "2026-10-10"
+ },
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), to be calibrated against Lympstone. Thorverton-to-Exeter lag (120 min) is assumed. The Exeter Ship Canal is not modelled. Lympstone dries at low tide (its low-water readings show the sensor level), so it is used for high water only.",
+ "calibration_hw_only": [
+  "Lympstone"
+ ],
+ "status": "partly calibrated",
+ "corridor_factor": 1.0
+}

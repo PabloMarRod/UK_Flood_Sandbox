@@ -1,0 +1,281 @@
+{
+ "id": "humber",
+ "name": "Humber Estuary",
+ "river_label": "Humber",
+ "river_names": [
+  "River Ouse",
+  "Humber",
+  "River Humber",
+  "River Trent"
+ ],
+ "limit_name": "Naburn Lock (Ouse) and Cromwell Lock (Trent)",
+ "tide_measure": "E71139-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Immingham",
+ "flows": [
+  {
+   "key": "ouse",
+   "name": "Ouse at Skelton",
+   "hydrology": "213d70b2-894b-406b-9dc3-31d3ccec7f54",
+   "at": "start",
+   "lag_min": 120,
+   "rt_stage": "F2405-level-stage-i-15_min-m"
+  },
+  {
+   "key": "trent",
+   "name": "Trent at North Muskham",
+   "hydrology": "15eae722-7f1f-41cb-a93e-2acdeca10a0a",
+   "at": "branch:Tidal Trent",
+   "lag_min": 0,
+   "rt_flow": "4022-flow--i-15_min-Ml_d",
+   "rt_flow_factor": 0.011574074074074073
+  },
+  {
+   "key": "wharfe",
+   "name": "Wharfe at Tadcaster",
+   "hydrology": "b9933a62-f326-4d77-9206-ebb335161831",
+   "at": [
+    457318.4,
+    438044.2
+   ],
+   "lag_min": 120,
+   "rt_flow": "F2002-flow-logged-i-15_min-m3_s"
+  },
+  {
+   "key": "derwent",
+   "name": "Derwent at Buttercrambe",
+   "hydrology": "605097d0-d67a-4e16-969a-e5fe8bbd7fd8",
+   "at": [
+    468118.1,
+    428619.1
+   ],
+   "lag_min": 300,
+   "rt_stage": "F2807-level-stage-i-15_min-m"
+  },
+  {
+   "key": "aire",
+   "name": "Aire at Beal",
+   "hydrology": "daa47a41-8f5a-4edb-9840-e0a13533cc64",
+   "at": [
+    472587.6,
+    425358.8
+   ],
+   "lag_min": 180,
+   "rt_stage": "F1806-level-stage-i-15_min-m"
+  },
+  {
+   "key": "don",
+   "name": "Don at Doncaster",
+   "hydrology": "11190c65-ef31-4e9d-9456-6e999a94cdba",
+   "at": [
+    474363.7,
+    423650.6
+   ],
+   "lag_min": 300,
+   "rt_flow": "F0908-flow-logged-i-15_min-m3_s"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.5
+  ],
+  [
+   30000,
+   1.5
+  ],
+  [
+   60000,
+   -4.25
+  ],
+  [
+   80000,
+   -8.25
+  ],
+  [
+   100000,
+   -10.5
+  ]
+ ],
+ "branches": [
+  {
+   "name": "Tidal Trent",
+   "start": [
+    479878.8,
+    360335.3
+   ],
+   "bed_profile": [
+    [
+     0,
+     2.0
+    ],
+    [
+     40000,
+     -0.5
+    ],
+    [
+     90000,
+     -3.5
+    ]
+   ]
+  }
+ ],
+ "start": [
+  460168.8,
+  445669.0
+ ],
+ "end": [
+  519960.8,
+  416378.9
+ ],
+ "check_gauges": [
+  {
+   "name": "Hull",
+   "measure": "L3203-level-tidal_level-i-15_min-mAOD",
+   "x": 510199.0,
+   "y": 428350.4
+  },
+  {
+   "name": "New Holland",
+   "measure": "E1555-level-tidal_level-i-15_min-mAOD",
+   "x": 508027.9,
+   "y": 424337.5
+  },
+  {
+   "name": "Goxhill",
+   "measure": "E1152-level-tidal_level-i-15_min-mAOD",
+   "x": 511990.9,
+   "y": 425432.1
+  },
+  {
+   "name": "South Ferriby",
+   "measure": "E1442-level-tidal_level-i-15_min-mAOD",
+   "x": 497502.6,
+   "y": 421102.3
+  },
+  {
+   "name": "Brough",
+   "measure": "L3491-level-tidal_level-i-15_min-mAOD",
+   "x": 493402.9,
+   "y": 426561.4
+  },
+  {
+   "name": "Keadby (Trent)",
+   "measure": "4098-level-tidal_level-i-5_min-mAOD",
+   "x": 483615.0,
+   "y": 411342.3
+  }
+ ],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 8000,
+ "manning": 0.0247,
+ "bank_height": 25.0,
+ "spacing": 500,
+ "max_gap": 15000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 80,
+  "river_peak": 600
+ },
+ "calibration": {
+  "method": "coordinate search on the main-channel bed profile and Manning n; high/low water and timing",
+  "calibration_period": [
+   "2026-10-01T00:00",
+   26.0
+  ],
+  "calibration_gauges": [
+   {
+    "gauge": "South Ferriby",
+    "ch_km": 75.5,
+    "rmse": 0.208,
+    "hw_err": -0.067,
+    "lw_err": -0.409,
+    "hw_lag_min": 0.0,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Brough",
+    "ch_km": 71.5,
+    "rmse": 1.503,
+    "hw_err": 0.153,
+    "lw_err": -3.116,
+    "hw_lag_min": 7.5,
+    "lw_used": false,
+    "skip": false
+   },
+   {
+    "gauge": "Keadby (Trent)",
+    "ch_km": 69.5,
+    "rmse": 0.511,
+    "hw_err": -0.071,
+    "lw_err": -0.125,
+    "hw_lag_min": 5.0,
+    "lw_used": true,
+    "skip": false
+   }
+  ],
+  "validation_period": [
+   "2026-09-15T00:00",
+   26
+  ],
+  "validation_gauges": [
+   {
+    "gauge": "South Ferriby",
+    "ch_km": 75.5,
+    "rmse": 0.222,
+    "hw_err": 0.165,
+    "lw_err": -0.565,
+    "hw_lag_min": 7.5,
+    "lw_used": true,
+    "skip": false
+   },
+   {
+    "gauge": "Brough",
+    "ch_km": 71.5,
+    "rmse": 1.55,
+    "hw_err": 0.174,
+    "lw_err": -3.25,
+    "hw_lag_min": 0.0,
+    "lw_used": false,
+    "skip": false
+   },
+   {
+    "gauge": "Keadby (Trent)",
+    "ch_km": 69.5,
+    "rmse": 0.559,
+    "hw_err": -0.091,
+    "lw_err": -0.144,
+    "hw_lag_min": 12.5,
+    "lw_used": true,
+    "skip": false
+   }
+  ],
+  "date": "2026-10-11",
+  "excluded": "New Holland (flat readings, gauge fault); Brough used for high water only (dries at low tide)"
+ },
+ "_note": "Bed levels are ASSUMPTIONS (mAOD) until calibrated against the Humber gauges. Main channel: tidal Ouse from Naburn Lock and the Humber to Immingham; branch: tidal Trent from Cromwell Lock. Gauge-to-tidal-limit lags are assumed. Hull and other tidal barriers are not modelled.",
+ "width_mode": "sum",
+ "via": [
+  [
+   500939.5,
+   425370.7
+  ],
+  [
+   504385.9,
+   424778.3
+  ],
+  [
+   509611.3,
+   427234.8
+  ],
+  [
+   514970.3,
+   424023.7
+  ]
+ ],
+ "status": "calibrated",
+ "calibration_hw_only": [
+  "Brough"
+ ]
+}

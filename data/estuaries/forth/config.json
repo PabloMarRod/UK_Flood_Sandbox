@@ -1,0 +1,86 @@
+{
+ "id": "forth",
+ "name": "Forth Estuary",
+ "river_label": "River Forth",
+ "river_names": [
+  "River Forth"
+ ],
+ "limit_name": "Stirling (Craigforth)",
+ "tide_measure": "E70839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Leith",
+ "flows": [
+  {
+   "key": "forth",
+   "name": "Forth at Craigforth (SEPA)",
+   "hydrology": "none",
+   "sepa_ts": "67565010",
+   "at": "start",
+   "lag_min": 60
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   60000,
+   -12.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  279441.9,
+  694282.6
+ ],
+ "end": [
+  326360.4,
+  678078.8
+ ],
+ "check_gauges": [],
+ "min_width": 20,
+ "default_width": 80,
+ "max_width": 10000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 500,
+ "width_mode": "sum",
+ "max_gap": 40000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 40,
+  "river_peak": 320
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": null,
+ "_note": "Scottish estuary. Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Leith. River flow from SEPA (open data). No open national flood-defence dataset is available for Scotland, so defences are only those in the terrain. Tidal limit position is approximate. Below Kincardine the channel line runs straight through mid-estuary waypoints (OS Open Rivers has no channel line there); widths there count all water across the section.",
+ "via": [
+  [
+   292570.3,
+   687029.4
+  ],
+  [
+   296075.8,
+   685161.5
+  ],
+  [
+   301635.4,
+   683026.5
+  ],
+  [
+   308454.4,
+   681205.8
+  ],
+  [
+   313407.8,
+   679433.2
+  ],
+  [
+   320257.5,
+   678744.2
+  ]
+ ],
+ "sum_from_ch": 26000,
+ "straight_after": 1
+}

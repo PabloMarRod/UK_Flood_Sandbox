@@ -1,0 +1,61 @@
+{
+ "id": "dyfi",
+ "name": "Dyfi Estuary",
+ "river_label": "Afon Dyfi",
+ "river_names": [
+  "Afon Dyfi",
+  "River Dovey"
+ ],
+ "limit_name": "Derwenlas",
+ "tide_measure": "E73239-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Barmouth",
+ "flows": [
+  {
+   "key": "dyfi",
+   "name": "Dyfi at Dyfi Bridge",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4146,
+   "nrw_parameter": 51,
+   "nrfa_station": "64001"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.5
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  272807.6,
+  300791.8
+ ],
+ "end": [
+  261140.8,
+  295767.0
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 3000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 20,
+  "river_peak": 240
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 19.7,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Barmouth, 19.7 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

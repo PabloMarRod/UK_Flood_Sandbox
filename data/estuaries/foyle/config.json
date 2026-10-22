@@ -1,0 +1,62 @@
+{
+ "id": "foyle",
+ "name": "Foyle Estuary (Derry~Londonderry)",
+ "river_label": "River Foyle",
+ "river_names": [
+  "River Foyle",
+  "Foyle"
+ ],
+ "limit_name": "Strabane / Lifford",
+ "tide_measure": "E73939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Portrush",
+ "flows": [
+  {
+   "key": "foyle",
+   "name": "Foyle (no real-time flow data for Northern Ireland)",
+   "hydrology": "none",
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   0.5
+  ],
+  [
+   15000,
+   -3.0
+  ],
+  [
+   32000,
+   -8.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  49322.1,
+  561929.0
+ ],
+ "end": [
+  64433.1,
+  585246.2
+ ],
+ "check_gauges": [],
+ "min_width": 40,
+ "default_width": 200,
+ "max_width": 2500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "width_mode": null,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 60,
+  "river_peak": 600
+ },
+ "calibration": null,
+ "status": "experimental",
+ "tide_proxy_km": 42.0,
+ "_note": "Northern Ireland estuary, on the border: terrain on the Donegal (Republic of Ireland) side is not available, so drawn areas there lack terrain. Bed levels are ASSUMPTIONS. Tide from Portrush, about 42 km from the estuary mouth: a weak stand-in. No real-time river flow data, so the default flow is used. Geometry from OpenStreetMap. Experimental: Northern Ireland has no open flood-defence data and only 10 m terrain here, so quay walls and embankments are missing and flooding is overstated; the tide gauge and terrain height datums have not been checked against each other."
+}
