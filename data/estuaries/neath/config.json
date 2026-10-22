@@ -1,0 +1,61 @@
+{
+ "id": "neath",
+ "name": "Neath Estuary",
+ "river_label": "River Neath",
+ "river_names": [
+  "River Neath",
+  "Afon Nedd"
+ ],
+ "limit_name": "Neath",
+ "tide_measure": "E72939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Mumbles",
+ "flows": [
+  {
+   "key": "neath",
+   "name": "Neath at Resolven",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4125,
+   "nrw_parameter": 109,
+   "nrfa_station": "58002"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   0.5
+  ],
+  [
+   30000,
+   -5.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  275186.1,
+  197569.2
+ ],
+ "end": [
+  272021.9,
+  192863.5
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 1000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 180
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 10.3,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Mumbles, 10.3 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

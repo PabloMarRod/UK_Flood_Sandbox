@@ -1,0 +1,66 @@
+{
+ "id": "mersey",
+ "name": "Mersey Estuary",
+ "river_label": "River Mersey",
+ "river_names": [
+  "River Mersey"
+ ],
+ "limit_name": "Howley Weir (Warrington)",
+ "tide_measure": "E70139-north_west-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Liverpool",
+ "flows": [
+  {
+   "key": "mersey",
+   "name": "Mersey at Westy",
+   "hydrology": "adec4dd7-9cdb-4c58-8fc3-2e509aecfbcd",
+   "at": "start",
+   "lag_min": 15,
+   "rt_flow": "693976-flow--i-15_min-m3_s"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   15000,
+   -1.0
+  ],
+  [
+   30000,
+   -3.0
+  ],
+  [
+   42000,
+   -6.0
+  ],
+  [
+   50000,
+   -12.0
+  ]
+ ],
+ "start": [
+  361347.1,
+  387786.7
+ ],
+ "end": [
+  332483.4,
+  395253.7
+ ],
+ "check_gauges": [],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 6000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 500,
+ "defaults": {
+  "river_base": 30,
+  "river_peak": 300
+ },
+ "calibration": null,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), not survey data. The upper estuary has wide intertidal flats that a rectangular 1D channel represents only roughly. No check gauges.",
+ "status": "experimental",
+ "corridor_factor": 1.0
+}

@@ -1,0 +1,61 @@
+{
+ "id": "loughor",
+ "name": "Loughor Estuary",
+ "river_label": "River Loughor",
+ "river_names": [
+  "River Loughor",
+  "Afon Llwchwr"
+ ],
+ "limit_name": "Pontarddulais",
+ "tide_measure": "E72939-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Mumbles",
+ "flows": [
+  {
+   "key": "loughor",
+   "name": "Loughor at Tir-y-dail",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4131,
+   "nrw_parameter": 98,
+   "nrfa_station": "59002"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.0
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  258888.4,
+  203785.8
+ ],
+ "end": [
+  250348.7,
+  197910.8
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 4000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 10,
+  "river_peak": 120
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 16.5,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Mumbles, 16.5 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

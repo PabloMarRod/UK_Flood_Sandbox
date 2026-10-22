@@ -1,0 +1,61 @@
+{
+ "id": "teifi",
+ "name": "Teifi Estuary",
+ "river_label": "Afon Teifi",
+ "river_names": [
+  "Afon Teifi",
+  "River Teifi"
+ ],
+ "limit_name": "Llechryd",
+ "tide_measure": "E73139-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Fishguard",
+ "flows": [
+  {
+   "key": "teifi",
+   "name": "Teifi at Glanteifi",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4210,
+   "nrw_parameter": 156,
+   "nrfa_station": "62001"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   1.5
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  222776.6,
+  244228.9
+ ],
+ "end": [
+  215866.3,
+  248488.6
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 1500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 180
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": 22.5,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Fishguard, 22.5 km from the estuary mouth (a stand-in gauge). River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

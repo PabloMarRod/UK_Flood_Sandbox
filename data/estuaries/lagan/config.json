@@ -1,0 +1,58 @@
+{
+ "id": "lagan",
+ "name": "Tidal Lagan (Belfast)",
+ "river_label": "River Lagan",
+ "river_names": [
+  "River Lagan",
+  "Lagan"
+ ],
+ "limit_name": "Lagan Weir",
+ "tide_measure": "E73839-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Bangor",
+ "flows": [
+  {
+   "key": "lagan",
+   "name": "Lagan (no real-time flow data for Northern Ireland)",
+   "hydrology": "none",
+   "at": "start",
+   "lag_min": 0
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   -1.0
+  ],
+  [
+   6000,
+   -9.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  146816.6,
+  529884.6
+ ],
+ "end": [
+  149695.5,
+  533349.4
+ ],
+ "check_gauges": [],
+ "min_width": 30,
+ "default_width": 120,
+ "max_width": 1500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 100,
+ "width_mode": null,
+ "max_gap": 4000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 120
+ },
+ "calibration": null,
+ "status": "experimental",
+ "tide_proxy_km": 14.4,
+ "_note": "Northern Ireland estuary. The Lagan Weir holds the river above it, so the model runs from the weir to Belfast harbour. Bed levels are ASSUMPTIONS. Tide from Bangor (Belfast Lough), 14 km away. No real-time river flow data is published for Northern Ireland, so the default flow is used. Geometry from OpenStreetMap; terrain from the OSNI 10 m DTM, whose heights refer to the Belfast datum. OpenStreetMap water outlines did not match here, so widths use the 80 m default and the water outline is drawn from the channel line. Experimental: Northern Ireland has no open flood-defence data and only 10 m terrain here, so quay walls and embankments are missing and flooding is overstated; the tide gauge and terrain height datums have not been checked against each other."
+}

@@ -1,0 +1,57 @@
+{
+ "id": "tees",
+ "name": "Tidal Tees",
+ "river_label": "River Tees",
+ "river_names": [
+  "River Tees"
+ ],
+ "limit_name": "Tees Barrage",
+ "tide_measure": "L3901-level-tidal_level-i-15_min-mAOD",
+ "tide_gauge": "Tees Dock",
+ "flows": [
+  {
+   "key": "tees",
+   "name": "Tees at Low Moor",
+   "hydrology": "d031ef9f-4e50-4c68-aa43-9b5589c32874",
+   "at": "start",
+   "lag_min": 180,
+   "rt_stage": "F3606-level-stage-i-15_min-m"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   -1.5
+  ],
+  [
+   5000,
+   -4.0
+  ],
+  [
+   13000,
+   -9.0
+  ]
+ ],
+ "start": [
+  445369.3,
+  519444.8
+ ],
+ "end": [
+  454308.9,
+  523504.4
+ ],
+ "check_gauges": [],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 5000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "defaults": {
+  "river_base": 20,
+  "river_peak": 400
+ },
+ "calibration": null,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), not survey data. The Tees Barrage is the upstream boundary (river flow enters below it); its gates and the Low Moor-to-barrage lag (180 min) are assumed. No check gauges.",
+ "status": "assumed"
+}

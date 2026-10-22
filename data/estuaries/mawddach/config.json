@@ -1,0 +1,61 @@
+{
+ "id": "mawddach",
+ "name": "Mawddach Estuary",
+ "river_label": "Afon Mawddach",
+ "river_names": [
+  "Afon Mawddach",
+  "River Mawddach"
+ ],
+ "limit_name": "Llanelltyd",
+ "tide_measure": "E73239-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Barmouth",
+ "flows": [
+  {
+   "key": "mawddach",
+   "name": "Mawddach at Tyddyn Gwladys",
+   "hydrology": "none",
+   "nrw_station": null,
+   "at": "start",
+   "lag_min": 0,
+   "nrw_location": 4150,
+   "nrw_parameter": 102,
+   "nrfa_station": "64010"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   2.0
+  ],
+  [
+   30000,
+   -4.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  272614.5,
+  319272.5
+ ],
+ "end": [
+  261633.1,
+  315454.8
+ ],
+ "check_gauges": [],
+ "min_width": 15,
+ "default_width": 80,
+ "max_width": 2500,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 250,
+ "max_gap": 5000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 15,
+  "river_peak": 180
+ },
+ "calibration": null,
+ "status": "assumed",
+ "tide_proxy_km": null,
+ "_note": "Bed levels are ASSUMPTIONS (mAOD), no check gauges. Tide from Barmouth. River flows: NRW 15-minute levels converted to flow with a daily level-flow relation from the National River Flow Archive (needs an NRW key in settings.json; otherwise the default base flow is used). Tidal limit position is approximate."
+}

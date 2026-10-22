@@ -1,0 +1,110 @@
+{
+ "id": "severn",
+ "name": "Severn Estuary",
+ "river_label": "River Severn",
+ "river_names": [
+  "River Severn"
+ ],
+ "limit_name": "Gloucester",
+ "tide_measure": "E72639-level-tidal_level-Mean-15_min-mAOD",
+ "tide_gauge": "Avonmouth",
+ "flows": [
+  {
+   "key": "severn",
+   "name": "Severn at Deerhurst",
+   "hydrology": "fcb795f4-07bc-4ae0-8372-041644e7f275",
+   "at": "start",
+   "lag_min": 120,
+   "rt_flow": "2606-flow--i-15_min-m3_s"
+  }
+ ],
+ "bed_profile": [
+  [
+   0,
+   3.25
+  ],
+  [
+   20000,
+   -4.25
+  ],
+  [
+   45000,
+   -8.5
+  ],
+  [
+   65000,
+   -15.0
+  ]
+ ],
+ "branches": [],
+ "start": [
+  382538.9,
+  218855.6
+ ],
+ "end": [
+  349528.3,
+  178147.6
+ ],
+ "check_gauges": [
+  {
+   "name": "Oldbury",
+   "measure": "531191-level-tidal_level-i-15_min-mAOD",
+   "x": 360277.5,
+   "y": 192666.7
+  }
+ ],
+ "min_width": 30,
+ "default_width": 80,
+ "max_width": 6000,
+ "manning": 0.025,
+ "bank_height": 25.0,
+ "spacing": 500,
+ "max_gap": 25000,
+ "corridor_factor": 1.0,
+ "defaults": {
+  "river_base": 60,
+  "river_peak": 500
+ },
+ "calibration": {
+  "method": "coordinate search, high water and timing at Oldbury",
+  "calibration_period": [
+   "2026-10-01T00:00",
+   26.0
+  ],
+  "calibration_gauges": [
+   {
+    "gauge": "Oldbury",
+    "ch_km": 55.0,
+    "rmse": 2.488,
+    "hw_err": 0.066,
+    "lw_err": -3.047,
+    "hw_lag_min": 0.0,
+    "lw_used": false,
+    "skip": false
+   }
+  ],
+  "date": "2026-10-11",
+  "validation_period": [
+   "2026-09-15T00:00",
+   26
+  ],
+  "validation_gauges": [
+   {
+    "gauge": "Oldbury",
+    "ch_km": 55.0,
+    "rmse": 2.45,
+    "hw_err": 0.159,
+    "lw_err": -3.154,
+    "hw_lag_min": -10.0,
+    "lw_used": false,
+    "skip": false
+   }
+  ]
+ },
+ "_note": "Bed levels are ASSUMPTIONS (mAOD) until calibrated against Oldbury. The Severn has one of the largest tidal ranges in the world and a tidal bore, which a 1D model with 500 m nodes represents only approximately. Deerhurst-to-Gloucester lag assumed. Oldbury dries at low tide (its low-water readings show the sensor level), so it is used for high water only.",
+ "width_mode": "sum",
+ "calibration_hw_only": [
+  "Oldbury"
+ ],
+ "status": "partly calibrated"
+}
