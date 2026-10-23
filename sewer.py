@@ -18,6 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
+SWMM_SHAPES = {"CIRCULAR", "FORCE_MAIN", "FILLED_CIRCULAR", "RECT_CLOSED", "RECT_OPEN", "TRAPEZOIDAL", "TRIANGULAR",
+               "HORIZ_ELLIPSE", "VERT_ELLIPSE", "ARCH", "PARABOLIC", "POWER", "RECT_TRIANGULAR", "RECT_ROUND",
+               "MODBASKETHANDLE", "EGG", "HORSESHOE", "GOTHIC", "CATENARY", "SEMIELLIPTICAL", "BASKETHANDLE",
+               "SEMICIRCULAR", "CUSTOM"}
 SHAPES = {"CIRCULAR": 1, "RECT_CLOSED": 2, "EGG": 1, "HORSESHOE": 1, "RECT_OPEN": 2, "TRAPEZOIDAL": 4,
           "TRIANGULAR": 2, "ELLIPTICAL": 2, "ARCH": 2, "FORCE_MAIN": 2, "BASKETHANDLE": 1}
 STRUCTURES = ("WEIRS", "ORIFICES", "OUTLETS", "PUMPS")
@@ -296,7 +300,12 @@ def from_inp(src):
     for nid, n in nodes.items():
         n["x"], n["y"] = xy.get(nid, (None, None))
     xs = {p[0]: p for p in sec.get("XSECTIONS", [])}
-    bad_shape = []
+    bad_shape, open_ch, dummy, custom = [], [], [], {}
+    units = next((p[1].upper() for p in sec.get("OPTIONS", []) if p[0].upper() == "FLOW_UNITS" and len(p) > 1), "CMS")
+    if units in ("CFS", "GPM", "MGD"):
+        iss.append(issue("E_US_UNITS", "error", "The file uses US units", [f"FLOW_UNITS {units}"],
+                         "Lengths and levels would be in feet. Convert the model to SI units (CMS, LPS or MLD) in the "
+                         "source software and export again."))
     for p in sec.get("CONDUITS", []):
         if len(p) < 5: continue
         lid = p[0]
@@ -306,7 +315,10 @@ def from_inp(src):
             while f"{lid}_{n_}" in links: n_ += 1
             lid = f"{lid}_{n_}"
         shape = x[1].upper() if x and len(x) > 1 else None
-        if shape and shape not in SHAPES: bad_shape.append(f"{lid} ({shape})")
+        if shape in ("IRREGULAR", "STREET"): open_ch.append(f"{lid} ({shape})")
+        elif shape == "DUMMY": dummy.append(lid)
+        elif shape and shape not in SWMM_SHAPES: bad_shape.append(f"{lid} ({shape})")
+        if shape == "CUSTOM": custom[lid] = x[3] if len(x) > 3 else None
         g1 = _num(x[2]) if x and len(x) > 2 else None; g2 = _num(x[3]) if x and len(x) > 3 else None
         io = _num(p[5]) if len(p) > 5 else 0.0; oo = _num(p[6]) if len(p) > 6 else 0.0
         a, b = nodes.get(p[1]), nodes.get(p[2])
@@ -317,11 +329,22 @@ def from_inp(src):
             dsi = (b["invert"] + (oo or 0)) if b and b["invert"] is not None else None
         links[lid] = dict(type="conduit", us=p[1], ds=p[2], length=_num(p[3]), n=_num(p[4]), shape=shape or "CIRCULAR",
                           g1=g1, g2=g2 if shape in ("RECT_CLOSED", "RECT_OPEN", "ELLIPTICAL", "ARCH", "TRIANGULAR") else None,
-                          us_inv=usi, ds_inv=dsi, geom_len=None)
+                          us_inv=usi, ds_inv=dsi, geom_len=None,
+                          xs_raw=list(x[1:]) if x else None,              # written back as given (side slopes, barrels)
+                          shape_curve=x[3] if shape == "CUSTOM" and len(x) > 3 else None)
+    if open_ch: iss.append(issue("E_OPEN_CHANNEL", "error", "Open channels described by transects or street sections",
+                                 open_ch, "Open channels, ditches and streams are already on the 2D surface from the LiDAR; "
+                                 "importing them as well would carry the same water twice. Leave them out of the export, "
+                                 "or give piped sections a standard or custom closed shape."))
+    if dummy: iss.append(issue("E_DUMMY", "error", "Dummy links (no cross-section)", dummy,
+                               "They carry no geometry for this model. Replace them with a short pipe or remove them."))
     curves = defaultdict(list)
     for p in sec.get("CURVES", []):
         curves[p[0]].append(p[1:])
     missing_curve, no_xs, n_struct = [], [], defaultdict(int)
+    for lid, c in custom.items():
+        if not c or c not in curves or (curves[c] and curves[c][0][0].upper() != "SHAPE"):
+            missing_curve.append(f"{lid}: {c or 'no curve named'} (a SHAPE curve)")
     def crest(off, us):
         """Offsets as elevations (the app writes LINK_OFFSETS ELEVATION)."""
         o = _num(off)
@@ -379,8 +402,8 @@ def from_inp(src):
                                "Pipes can't be connected reliably. Rename them in the source model."))
     if dup_l: iss.append(issue("F_DUP_LINK", "fix", "Pipe names used more than once", dup_l,
                                fix="Add a suffix (_2, _3) to the repeated names"))
-    if bad_shape: iss.append(issue("E_SHAPE", "error", "Pipe shapes this app does not model", bad_shape,
-                                   "Custom and irregular sections aren't supported. Replace them with a standard shape."))
+    if bad_shape: iss.append(issue("E_SHAPE", "error", "Pipe shapes not recognised", bad_shape,
+                                   "Not a SWMM cross-section shape. Check the shape name in the source model."))
     sealed = [k for k, n in nodes.items() if n.get("from_surdepth")]
     if sealed: iss.append(issue("W_SEALED", "warn", "Manholes with a surcharge depth treated as sealed", sealed,
                                 "SWMM's surcharge depth means the manhole can pressurise without spilling."))
@@ -1099,7 +1122,7 @@ def save(A, result, source_name):
                                                                   "chamber_area", "gated", "stage", "storage")}
                         for k, n in net["nodes"].items()},
                  links={k: {f: v for f, v in l.items() if f in ("us", "ds", "shape", "g1", "g2", "us_inv", "ds_inv", "length",
-                                                                  "geom_len", "n", "size_filled", "ends", "type", "params", "xs",
+                                                                  "geom_len", "n", "size_filled", "ends", "type", "params", "xs", "xs_raw",
                                                                   "curve", "crest")}
                         for k, l in net["links"].items()},
                  curves=net.get("curves") or {}, source=source_name, summary=result["summary"],
@@ -1292,7 +1315,12 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
             continue
         L = max(2.0, l.get("length") or l.get("geom_len") or 2.0)
         out["conduits"].append(f"{lid} {sid[l['us']]} {sid[l['ds']]} {L:.2f} {l['n']:.4f} {l['us_inv']:.3f} {l['ds_inv']:.3f} 0 0")
-        out["xsections"].append(f"{lid} {l['shape']} {l['g1']:.3f} {l.get('g2') or 0:.3f} 0 0 1")
+        if l.get("xs_raw") and not l.get("size_filled"):            # SWMM: as given, with a custom shape curve renamed
+            xr = list(l["xs_raw"])
+            if xr[0].upper() == "CUSTOM" and len(xr) > 2: need_curves.add(xr[2]); xr[2] = cname(xr[2])
+            out["xsections"].append(" ".join([lid] + xr))
+        else:
+            out["xsections"].append(f"{lid} {l['shape']} {l['g1']:.3f} {l.get('g2') or 0:.3f} 0 0 1")
     for c in sorted(need_curves):
         for row in (net.get("curves") or {}).get(c, []):
             out["curves"].append(" ".join([cname(c)] + list(row)))

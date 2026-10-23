@@ -118,8 +118,8 @@ def _mutate(kind):
 def test_blocking_errors_stop_the_import(A, tmp_path, kind):
     nodes, pipes, extra = _mutate(kind)
     f = write_inp(tmp_path / "n.inp", nodes, pipes, "" if extra == "SHAPE" else extra)
-    if extra == "SHAPE":                                                      # a custom cross-section
-        f.write_text(f.read_text().replace(" CIRCULAR ", " CUSTOM ", 1))
+    if extra == "SHAPE":                                                      # not a SWMM shape name
+        f.write_text(f.read_text().replace(" CIRCULAR ", " ROUNDISH ", 1))
     r = run_check(A, f, tmp_path, all_fixes=True)
     assert r["status"] == "blocked" and kind in codes(r, "error"), codes(r)
     assert r["network"] is None
@@ -405,3 +405,71 @@ def test_gis_structures_run(A, tmp_path, monkeypatch):
     flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
              if l.strip().startswith(("S_CSO1", "S_PMP1", "S_HB1"))}
     assert set(flows) == {"S_CSO1", "S_PMP1", "S_HB1"} and flows["S_HB1"] <= 0.035
+
+
+def custom_inp(path, shape_line, extra=""):
+    lines = write_inp(path, NET["nodes"], NET["pipes"]).read_text().split("\n")
+    k = lines.index("[XSECTIONS]") + 1
+    lines[k] = f"{NET['pipes'][0]['id']} {shape_line}"
+    Path(path).write_text("\n".join(lines) + "\n" + extra)
+    return path
+
+
+EGG_SHAPE = """[CURVES]
+EGGISH SHAPE 0.0 0.0
+EGGISH 0.2 0.55
+EGGISH 0.5 0.75
+EGGISH 0.8 0.6
+EGGISH 1.0 0.0
+"""
+
+
+def test_custom_shape_is_carried_over(A, tmp_path):
+    f = custom_inp(tmp_path / "c.inp", "CUSTOM 0.45 EGGISH 1", EGG_SHAPE)
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "ok", codes(r)
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, r, "c.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True))
+    core.write_inp(A2, q, tmp_path / "model.inp", "model.h5")
+    t = (tmp_path / "model.inp").read_text()
+    assert f"S_{NET['pipes'][0]['id']} CUSTOM 0.45 SC_EGGISH 1" in t and "SC_EGGISH SHAPE 0.0 0.0" in t
+
+
+def test_custom_shape_without_its_curve_blocks(A, tmp_path):
+    r = run_check(A, custom_inp(tmp_path / "c.inp", "CUSTOM 0.45 NOPE 1"), tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_CURVE" in codes(r, "error")
+
+
+def test_open_channels_and_us_units_block(A, tmp_path):
+    r = run_check(A, custom_inp(tmp_path / "c.inp", "IRREGULAR DITCH1"), tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_OPEN_CHANNEL" in codes(r, "error")
+    f = write_inp(tmp_path / "u.inp", NET["nodes"], NET["pipes"])
+    f.write_text(f.read_text().replace("FLOW_UNITS CMS", "FLOW_UNITS CFS"))
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_US_UNITS" in codes(r, "error")
+
+
+def test_other_swmm_shapes_keep_all_their_dimensions(A, tmp_path):
+    r = run_check(A, custom_inp(tmp_path / "t.inp", "TRAPEZOIDAL 0.6 0.4 1.5 1.5 2"), tmp_path, all_fixes=True)
+    assert r["status"] == "ok"
+    assert r["network"]["links"][NET["pipes"][0]["id"]]["xs_raw"] == ["TRAPEZOIDAL", "0.6", "0.4", "1.5", "1.5", "2"]
+
+
+@pytest.mark.engine
+def test_custom_shape_run(A, tmp_path, monkeypatch):
+    f = custom_inp(tmp_path / "c.inp", "CUSTOM 0.45 EGGISH 1", EGG_SHAPE)
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, run_check(A2, f, tmp_path, all_fixes=True), "c.inp")
+    q, _ = core.validate(A2, dict(depth=60, duration=30, sim=0.5, sewer=True))
+    run = tmp_path / "run"; run.mkdir(); monkeypatch.chdir(run)
+    core.write_inp(A2, q, run / "model.inp", "model.h5")
+    import openswmm.engine as eng
+    eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), lambda frac: None)
+    rpt = (run / "model.rpt").read_text()
+    assert "ERROR" not in rpt.split("Element Count")[0]
+    errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
+    assert errs and max(abs(e) for e in errs) < 0.5
+    pid = "S_" + NET["pipes"][0]["id"]
+    row = [l for l in rpt.split("Link Flow Summary")[1].split("\n") if l.strip().startswith(pid + " ")]
+    assert row and float(row[0].split()[2]) > 0                               # water went through the custom pipe

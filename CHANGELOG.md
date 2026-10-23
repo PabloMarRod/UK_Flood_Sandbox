@@ -10,7 +10,8 @@ All notable changes are recorded here. The project follows semantic versioning o
   from the data or a scenario default, and each manhole stores water over its chamber area. SWMM files may also
   hold weirs, orifices, outlets, pumps, storage units and flow dividers, and outfalls keep their flap gates. GIS
   files may add weirs, flow controls, pumps and storage tanks as layers; any missing hydraulic value stops the
-  import.
+  import. SWMM cross-sections keep all their dimensions; custom closed shapes are supported;
+  open channels (transects) and US-unit files are refused with an explanation.
 - Fixed: the NetCDF time series was left incomplete with NumPy 2 (hazard class and global attributes missing).
 
 ## 0.1.0 (first public release)

@@ -466,8 +466,9 @@ names) and can be changed. Levels must be in metres above Ordnance Datum.
 
 Every file is checked before anything is imported. Each issue is one of:
 
-- **error**: the import stops and the data must be corrected at source. Examples: custom or irregular
-  cross-sections; storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
+- **error**: the import stops and the data must be corrected at source. Examples: a SWMM file in US units;
+  open channels given as IRREGULAR or STREET sections (the 2D surface already carries open channels, so importing
+  them would carry the same water twice); dummy links; shape names SWMM doesn't have; storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
   weirs or orifices without a cross-section, or whose level can't be worked out; GIS structures missing a value
   the model needs (crest level or length, flow-control level or size, pump rate or switch levels, tank floor level,
   depth or area); pumps switching off at or above their switch-on level; weir crests more than 0.5 m above the
@@ -512,6 +513,10 @@ the ground so the cover orifice can open. Gully orifices are low rectangles, so 
 A manhole with no open cell within two cells behaves as sealed. Outfalls inside the area are linked to the nearest
 open or channel cell, so their water returns to the surface; outfalls outside it take water out of the model. Pipes
 start empty: foul and dry-weather flow, subcatchments and roof connections are not modelled.
+
+Cross-sections from a SWMM file are written back as given, with all their dimensions and barrels, so any of SWMM's
+standard shapes imports, as do CUSTOM closed shapes with their SHAPE curve (carried over and renamed; a missing
+curve stops the import).
 
 SWMM files may also hold weirs (CSO overflows, for example), orifices, outlets, pumps and storage units. They keep
 their settings from the source model: crest heights are converted to elevations, pump and outlet curves and
