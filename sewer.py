@@ -330,8 +330,8 @@ def from_inp(src):
                                    "Custom and irregular sections aren't supported. Replace them with a standard shape."))
     un = [f"{s} ({len(sec[s])})" for s in UNSUPPORTED_INP if sec.get(s)]
     if un: iss.append(issue("E_UNSUPPORTED", "error", "Structures this app can't import yet", un,
-                            "Remove or simplify them in the source model (for example, replace a CSO weir with its "
-                            "continuation pipe), then export again."))
+                            "Flow dividers aren't supported. Replace each with what it does in the source model, for "
+                            "example a weir to the overflow branch and a pipe for the main flow, then export again."))
     sealed = [k for k, n in nodes.items() if n.get("from_surdepth")]
     if sealed: iss.append(issue("W_SEALED", "warn", "Manholes with a surcharge depth treated as sealed", sealed,
                                 "SWMM's surcharge depth means the manhole can pressurise without spilling."))
