@@ -20,9 +20,10 @@ import numpy as np
 
 SHAPES = {"CIRCULAR": 1, "RECT_CLOSED": 2, "EGG": 1, "HORSESHOE": 1, "RECT_OPEN": 2, "TRAPEZOIDAL": 4,
           "TRIANGULAR": 2, "ELLIPTICAL": 2, "ARCH": 2, "FORCE_MAIN": 2, "BASKETHANDLE": 1}
-UNSUPPORTED_INP = ("STORAGE", "DIVIDERS", "PUMPS", "ORIFICES", "WEIRS", "OUTLETS")
+UNSUPPORTED_INP = ("DIVIDERS",)
+STRUCTURES = ("WEIRS", "ORIFICES", "OUTLETS", "PUMPS")
 IGNORED_INP = ("SUBCATCHMENTS", "SUBAREAS", "INFILTRATION", "DWF", "INFLOWS", "RDII", "LOSSES", "LID_USAGE",
-               "RAINGAGES", "POLLUTANTS", "LANDUSES", "BUILDUP", "WASHOFF", "TREATMENT", "GROUNDWATER")
+               "RAINGAGES", "POLLUTANTS", "LANDUSES", "BUILDUP", "WASHOFF", "TREATMENT", "GROUNDWATER", "CONTROLS")
 DEFAULT_N = 0.013          # Manning's n for concrete or clay pipes in fair condition
 DEFAULT_DEPTH = 1.5        # m, manhole depth assumed when no level at all is known
 MAX_UPLOAD = 300_000_000  # bytes
@@ -218,9 +219,27 @@ def from_inp(src):
         sur = _num(p[4]) if len(p) > 4 else 0
         nodes[p[0]] = dict(kind="junction", invert=inv, cover=(inv + md) if inv is not None and md else None, depth=md or None,
                            cover_raw="sealed" if sur and sur > 0 else None, from_surdepth=bool(sur and sur > 0))
+    odd_out = []
     for p in sec.get("OUTFALLS", []):
         if p[0] in nodes: dup_n.append(p[0])
-        nodes[p[0]] = dict(kind="outfall", invert=_num(p[1]), cover=None, depth=None)
+        typ = p[2].upper() if len(p) > 2 else "FREE"
+        rest = p[3:]
+        stage = None
+        if typ == "FIXED" and rest:
+            stage = _num(rest[0]); rest = rest[1:]
+        elif typ in ("TIDAL", "TIMESERIES") and rest:
+            odd_out.append(f"{p[0]} ({typ})"); rest = rest[1:]
+        gated = bool(rest) and rest[0].upper() == "YES"
+        nodes[p[0]] = dict(kind="outfall", invert=_num(p[1]), cover=None, depth=None, gated=gated,
+                           stage=stage if typ == "FIXED" else None)
+    if odd_out: iss.append(issue("W_OUTFALL_TYPE", "warn", "Tidal or time-series outfalls treated as free", odd_out,
+                                 "Inside the area the river and tide levels come from the 2D model; the curve or series isn't used."))
+    for p in sec.get("STORAGE", []):
+        if len(p) < 5: continue
+        if p[0] in nodes: dup_n.append(p[0])
+        inv = _num(p[1]); md = _num(p[2])
+        nodes[p[0]] = dict(kind="storage", invert=inv, cover=None, depth=md, storage=p[1:], cover_type="sealed")
+        nodes[p[0]]["x"], nodes[p[0]]["y"] = xy.get(p[0], (None, None))
     for nid, n in nodes.items():
         n["x"], n["y"] = xy.get(nid, (None, None))
     xs = {p[0]: p for p in sec.get("XSECTIONS", [])}
@@ -243,9 +262,66 @@ def from_inp(src):
         else:
             usi = (a["invert"] + (io or 0)) if a and a["invert"] is not None else None
             dsi = (b["invert"] + (oo or 0)) if b and b["invert"] is not None else None
-        links[lid] = dict(us=p[1], ds=p[2], length=_num(p[3]), n=_num(p[4]), shape=shape or "CIRCULAR",
+        links[lid] = dict(type="conduit", us=p[1], ds=p[2], length=_num(p[3]), n=_num(p[4]), shape=shape or "CIRCULAR",
                           g1=g1, g2=g2 if shape in ("RECT_CLOSED", "RECT_OPEN", "ELLIPTICAL", "ARCH", "TRIANGULAR") else None,
                           us_inv=usi, ds_inv=dsi, geom_len=None)
+    curves = defaultdict(list)
+    for p in sec.get("CURVES", []):
+        curves[p[0]].append(p[1:])
+    missing_curve, no_xs, n_struct = [], [], defaultdict(int)
+    def crest(off, us):
+        """Offsets as elevations (the app writes LINK_OFFSETS ELEVATION)."""
+        o = _num(off)
+        if o is None: return None
+        if offsets == "ELEVATION": return o
+        a = nodes.get(us)
+        return (a["invert"] + o) if a and a.get("invert") is not None else None
+    for secname, typ in (("WEIRS", "weir"), ("ORIFICES", "orifice"), ("OUTLETS", "outlet"), ("PUMPS", "pump")):
+        for p in sec.get(secname, []):
+            if len(p) < 4: continue
+            lid = p[0]
+            if lid in links:
+                dup_l.append(lid); n_ = 2
+                while f"{lid}_{n_}" in links: n_ += 1
+                lid = f"{lid}_{n_}"
+            l = dict(type=typ, us=p[1], ds=p[2], params=p[3:], xs=None, curve=None)
+            if typ in ("weir", "orifice"):
+                l["crest"] = crest(p[4] if len(p) > 4 else None, p[1])
+                x = xs.get(p[0])
+                if not x: no_xs.append(lid)
+                else: l["xs"] = x[1:]
+            elif typ == "outlet":
+                l["crest"] = crest(p[3], p[1])
+                if len(p) > 5 and p[4].upper().startswith("TABULAR"): l["curve"] = p[5]
+            else:
+                if p[3] != "*": l["curve"] = p[3]
+            if l["curve"] and l["curve"] not in curves: missing_curve.append(f"{lid}: {l['curve']}")
+            links[lid] = l; n_struct[secname.lower()] += 1
+    for n in nodes.values():
+        if n["kind"] == "storage" and len(n["storage"]) > 4 and n["storage"][3].upper() == "TABULAR" \
+                and n["storage"][4] not in curves:
+            missing_curve.append(n["storage"][4])
+    nolevel = [k for k, l in links.items() if l.get("type") in ("weir", "orifice", "outlet") and l.get("crest") is None]
+    if nolevel: iss.append(issue("E_STRUCT_LEVEL", "error", "Structures whose level can't be worked out", nolevel,
+                                 "Their offset is relative to a node without an invert, or isn't a number."))
+    if missing_curve: iss.append(issue("E_CURVE", "error", "Curves referenced but not in the file", missing_curve,
+                                       "Add the missing [CURVES] entries in the source model."))
+    if no_xs: iss.append(issue("E_STRUCT_XS", "error", "Weirs or orifices without a cross-section", no_xs,
+                               "Each needs an [XSECTIONS] entry giving its opening."))
+    shapes = {"TABULAR", "FUNCTIONAL"}
+    odd_store = [k for k, n in nodes.items() if n["kind"] == "storage" and n["storage"][3].upper() not in shapes]
+    if odd_store: iss.append(issue("E_STORAGE_SHAPE", "error", "Storage shapes this app can't read", odd_store,
+                                   "Use a TABULAR curve or a FUNCTIONAL shape for these storage units."))
+    n_store = sum(1 for n in nodes.values() if n["kind"] == "storage")
+    if n_struct or n_store:
+        one = dict(weirs="weir", orifices="orifice", outlets="outlet", pumps="pump")
+        what = [f"{v} {k if v != 1 else one[k]}" for k, v in n_struct.items()] + \
+               ([f"{n_store} storage unit{'s' if n_store != 1 else ''}"] if n_store else [])
+        iss.append(issue("W_STRUCTURES", "warn", "Structures imported as in the source model", what,
+                         "Weirs, orifices, outlets and pumps keep their settings; pumps run on their curves and "
+                         "start-up and shut-off depths (control rules aren't imported). Storage units connect to "
+                         "the surface only through the network."))
+    net_curves = {k: v for k, v in curves.items()}
     if dup_n: iss.append(issue("E_DUP_NODE", "error", "Node names used more than once", dup_n,
                                "Pipes can't be connected reliably. Rename them in the source model."))
     if dup_l: iss.append(issue("F_DUP_LINK", "fix", "Pipe names used more than once", dup_l,
@@ -266,7 +342,7 @@ def from_inp(src):
     missing_xy = [k for k, n in nodes.items() if n["x"] is None]
     if missing_xy: iss.append(issue("E_NO_XY", "error", "Nodes without coordinates", missing_xy,
                                     "Every node needs a position in [COORDINATES]."))
-    return dict(nodes=nodes, links=links), iss
+    return dict(nodes=nodes, links=links, curves=net_curves), iss
 
 
 def from_gis(src, mapping):
@@ -434,6 +510,11 @@ def _components(net):
     return comps
 
 
+def _c(links):
+    """The conduits among the links (weirs, orifices, outlets and pumps have no pipe size or inverts)."""
+    return {k: l for k, l in links.items() if l.get("type", "conduit") == "conduit"}
+
+
 def analyse(net, kind, ground, accepted, base_issues):
     """Run every check. Fixes the user accepted are applied as they are met, so later checks see the repaired
     network. Returns the issues (each marked applied or not) and the network."""
@@ -535,16 +616,16 @@ def analyse(net, kind, ground, accepted, base_issues):
             return iss, net
 
     # sizes
-    sizes = [l["g1"] for l in links.values() if l["g1"]]
+    sizes = [l["g1"] for l in _c(links).values() if l["g1"]]
     if sizes and np.median(sizes) > 20:
         if add(issue("F_MM", "fix", "Pipe sizes look like millimetres", [f"median {np.median(sizes):g}"],
                      fix="Divide sizes by 1,000 to get metres")):
-            for l in links.values():
+            for l in _c(links).values():
                 for g in ("g1", "g2"):
                     if l[g]: l[g] /= 1000
         else:
             return iss, net
-    miss = [lid for lid, l in links.items() if not l["g1"] or l["g1"] <= 0]
+    miss = [lid for lid, l in _c(links).items() if not l["g1"] or l["g1"] <= 0]
     if miss:
         if len(miss) > MAX_MISSING_SIZE * len(links):
             add(issue("E_SIZE", "error", "Too many pipes without a size", miss,
@@ -554,18 +635,18 @@ def analyse(net, kind, ground, accepted, base_issues):
         if add(issue("F_SIZE", "fix", "Pipes without a size", miss,
                      fix="Use the size of the next pipe downstream (or upstream), or 225 mm if neither has one")):
             by_us = defaultdict(list); by_ds = defaultdict(list)
-            for lid, l in links.items(): by_us[l["us"]].append(lid); by_ds[l["ds"]].append(lid)
+            for lid, l in _c(links).items(): by_us[l["us"]].append(lid); by_ds[l["ds"]].append(lid)
             for lid in miss:
                 l = links[lid]
                 near = [links[k]["g1"] for k in by_us[l["ds"]] + by_ds[l["us"]] if links[k]["g1"]]
                 l["g1"] = near[0] if near else 0.225; l["size_filled"] = True
         else:
             return iss, net
-    big = [f"{lid} ({l['g1']:g} m)" for lid, l in links.items() if l["g1"] and l["g1"] > 4]
+    big = [f"{lid} ({l['g1']:g} m)" for lid, l in _c(links).items() if l["g1"] and l["g1"] > 4]
     if big:
         add(issue("E_SIZE_BIG", "error", "Implausibly large pipes", big, "Check the size units in the source data."))
         return iss, net
-    for l in links.values():
+    for l in _c(links).values():
         if l["shape"] in ("RECT_CLOSED", "RECT_OPEN", "ELLIPTICAL", "ARCH") and not l.get("g2"):
             l["g2"] = l["g1"]
 
@@ -580,12 +661,12 @@ def analyse(net, kind, ground, accepted, base_issues):
                   "above Ordnance Datum (Malin Head for NI data in Irish Grid)."))
         return iss, net
     no_level = [k for k, n in nodes.items() if n.get("invert") is None and n.get("depth") is None
-                and not any(l[f"{e}_inv"] is not None for l in links.values() for e in ("us", "ds") if l[e] == k)]
+                and not any(l[f"{e}_inv"] is not None for l in _c(links).values() for e in ("us", "ds") if l[e] == k)]
     if len(no_level) > MAX_MISSING_LEVEL * len(nodes):
         add(issue("E_LEVEL", "error", "Too many manholes without any level", no_level,
                   f"{len(no_level)} of {len(nodes)} have no invert, depth or pipe invert. Fill in levels in the source data."))
         return iss, net
-    miss_cover = [k for k, n in nodes.items() if n.get("cover") is None and not n.get("outside") and n["kind"] != "outfall"]
+    miss_cover = [k for k, n in nodes.items() if n.get("cover") is None and not n.get("outside") and n["kind"] == "junction"]
     if miss_cover:
         if add(issue("F_COVER", "fix", "Manholes without a cover level", miss_cover,
                      fix="Use the LiDAR ground level at each manhole")):
@@ -601,7 +682,7 @@ def analyse(net, kind, ground, accepted, base_issues):
             _fill_inverts(net, miss_inv)
         else:
             return iss, net
-    miss_pinv = [lid for lid, l in links.items() if l["us_inv"] is None or l["ds_inv"] is None]
+    miss_pinv = [lid for lid, l in _c(links).items() if l["us_inv"] is None or l["ds_inv"] is None]
     if miss_pinv:
         if add(issue("F_PIPE_INVERT", "fix", "Pipes without invert levels", miss_pinv,
                      fix="Use the invert of the manhole at that end")):
@@ -611,26 +692,26 @@ def analyse(net, kind, ground, accepted, base_issues):
                 if l["ds_inv"] is None: l["ds_inv"] = nodes[l["ds"]]["invert"]
         else:
             return iss, net
-    above = [lid for lid, l in links.items()
+    above = [lid for lid, l in _c(links).items()
              for e, key in ((l["us"], "us_inv"), (l["ds"], "ds_inv"))
              if nodes[e].get("cover") is not None and l[key] + l["g1"] > nodes[e]["cover"] + 0.05 and nodes[e]["kind"] != "outfall"]
     if above:
         add(issue("E_ABOVE", "error", "Pipes above the ground", sorted(set(above)),
                   "The pipe's top is above the manhole cover. Check the levels (or units) in the source data."))
         return iss, net
-    below = sorted({e for l in links.values() for e, key in ((l["us"], "us_inv"), (l["ds"], "ds_inv"))
+    below = sorted({e for l in _c(links).values() for e, key in ((l["us"], "us_inv"), (l["ds"], "ds_inv"))
                     if l[key] < nodes[e]["invert"] - 0.005})
     if below:
         if add(issue("F_BELOW", "fix", "Pipes below the manhole floor", below,
                      fix="Lower each manhole's invert to its lowest pipe")):
             for e in below:
-                nodes[e]["invert"] = min(l[k] for l in links.values() for n_, k in ((l["us"], "us_inv"), (l["ds"], "ds_inv")) if n_ == e)
+                nodes[e]["invert"] = min(l[k] for l in _c(links).values() for n_, k in ((l["us"], "us_inv"), (l["ds"], "ds_inv")) if n_ == e)
         else:
             return iss, net
 
     # roughness
-    rs = [l["n"] for l in links.values() if l["n"] is not None]
-    odd = [lid for lid, l in links.items() if l["n"] is None or not (0.008 <= l["n"] <= 0.05)]
+    rs = [l["n"] for l in _c(links).values() if l["n"] is not None]
+    odd = [lid for lid, l in _c(links).items() if l["n"] is None or not (0.008 <= l["n"] <= 0.05)]
     if odd:
         cw = rs and np.median(rs) > 0.05
         if add(issue("F_ROUGH", "fix", "Roughness missing or not a Manning's n", odd,
@@ -665,14 +746,15 @@ def analyse(net, kind, ground, accepted, base_issues):
                      fix="Join the pipes at a new junction 1 m upstream, with a pipe the size of the largest to the outfall")):
             for k in multi:
                 o = nodes[k]; jid = f"{k}_J"
-                big = max(into[k], key=lambda lid: links[lid]["g1"])
+                big = max(into[k], key=lambda lid: links[lid].get("g1") or 0)
                 lx, ly = nodes[links[big]["us"]]["x"], nodes[links[big]["us"]]["y"]
                 d = math.hypot(lx - o["x"], ly - o["y"]) or 1
                 nodes[jid] = dict(x=o["x"] + (lx - o["x"]) / d, y=o["y"] + (ly - o["y"]) / d, kind="junction",
                                   invert=o["invert"], cover=o.get("cover") if o.get("cover") is not None else o.get("ground"),
                                   ground=o.get("ground"), added=True, outside=o.get("outside"))
                 for lid in into[k]: links[lid]["ds"] = jid
-                links[f"{k}_L"] = dict(us=jid, ds=k, shape=links[big]["shape"], g1=links[big]["g1"], g2=links[big].get("g2"),
+                links[f"{k}_L"] = dict(type="conduit", us=jid, ds=k, shape=links[big].get("shape", "CIRCULAR"),
+                                       g1=links[big].get("g1") or 1.0, g2=links[big].get("g2"),
                                        us_inv=o["invert"], ds_inv=o["invert"], length=2.0, geom_len=1.0, n=DEFAULT_N, added=True)
         else:
             return iss, net
@@ -728,11 +810,11 @@ def analyse(net, kind, ground, accepted, base_issues):
             and abs(n["cover"] - n["ground"]) > 0.5]
     if diff: add(issue("W_COVER", "warn", "Cover levels differ from the LiDAR ground by more than 0.5 m", diff,
                        "The model surface uses the LiDAR ground; each manhole reaches up to it."))
-    adv = [lid for lid, l in links.items() if l["ds_inv"] > l["us_inv"] + 0.01]
+    adv = [lid for lid, l in _c(links).items() if l["ds_inv"] > l["us_inv"] + 0.01]
     if adv: add(issue("W_ADVERSE", "warn", "Pipes falling uphill", adv, "Imported as they are; check if this is intended."))
-    short = [lid for lid, l in links.items() if (l.get("length") or l.get("geom_len") or 0) < 2]
+    short = [lid for lid, l in _c(links).items() if (l.get("length") or l.get("geom_len") or 0) < 2]
     if short: add(issue("W_SHORT", "warn", "Pipes shorter than 2 m", short, "Kept at 2 m in the model for stability."))
-    mism = [lid for lid, l in links.items() if l.get("length") and l.get("geom_len") and
+    mism = [lid for lid, l in _c(links).items() if l.get("length") and l.get("geom_len") and
             abs(l["length"] - l["geom_len"]) > 0.2 * max(l["geom_len"], 5)]
     if mism: add(issue("W_LENGTH", "warn", "Stated length differs from the drawn length by more than 20%", mism,
                        "The stated length is used."))
@@ -745,7 +827,7 @@ def _fill_inverts(net, miss):
     nodes, links = net["nodes"], net["links"]
     for k in miss:
         n = nodes[k]
-        pinv = [l[f"{e}_inv"] for l in links.values() for e in ("us", "ds") if l[e] == k and l[f"{e}_inv"] is not None]
+        pinv = [l[f"{e}_inv"] for l in _c(links).values() for e in ("us", "ds") if l[e] == k and l[f"{e}_inv"] is not None]
         if pinv:
             n["invert"] = min(pinv); n["invert_filled"] = "pipe"
         elif n.get("depth") and n.get("cover") is not None:
@@ -791,9 +873,9 @@ def check(path, mapping, A, accepted, work):
     for i in iss:
         if i["sev"] == "fix": i["applied"] = i["code"] in accepted
     status = "blocked" if errors else "needs_fixes" if pending else "ok"
-    summ = dict(nodes=len(net["nodes"]), pipes=len(net["links"]),
+    summ = dict(nodes=len(net["nodes"]), pipes=len(_c(net["links"])), structures=len(net["links"]) - len(_c(net["links"])),
                 outfalls=sum(1 for n in net["nodes"].values() if n["kind"] == "outfall"),
-                length_km=round(sum((l.get("length") or l.get("geom_len") or 0) for l in net["links"].values()) / 1000, 2))
+                length_km=round(sum((l.get("length") or l.get("geom_len") or 0) for l in _c(net["links"]).values()) / 1000, 2))
     return dict(kind=kind, status=status, issues=iss, summary=summ, network=net if status == "ok" else None)
 
 
@@ -805,12 +887,13 @@ def save(A, result, source_name):
     d = Path(A["dir"]) / "sewer"; d.mkdir(exist_ok=True)
     clean = dict(nodes={k: {f: v for f, v in n.items() if f in ("x", "y", "kind", "invert", "cover", "ground", "outside",
                                                                   "cover_filled", "invert_filled", "outfall_added", "added", "cover_type",
-                                                                  "chamber_area")}
+                                                                  "chamber_area", "gated", "stage", "storage")}
                         for k, n in net["nodes"].items()},
                  links={k: {f: v for f, v in l.items() if f in ("us", "ds", "shape", "g1", "g2", "us_inv", "ds_inv", "length",
-                                                                  "geom_len", "n", "size_filled", "ends")}
+                                                                  "geom_len", "n", "size_filled", "ends", "type", "params", "xs",
+                                                                  "curve", "crest")}
                         for k, l in net["links"].items()},
-                 source=source_name, summary=result["summary"],
+                 curves=net.get("curves") or {}, source=source_name, summary=result["summary"],
                  issues=[{k: v for k, v in i.items() if k != "ids"} for i in result["issues"]])
     (d / "network.json").write_text(json.dumps(clean))
     return clean
@@ -836,7 +919,8 @@ def geojson(A):
     feats = []
     for k, l in net["links"].items():
         a, b = net["nodes"][l["us"]], net["nodes"][l["ds"]]
-        feats.append(dict(type="Feature", properties=dict(id=k, kind="pipe", size=l["g1"], filled=bool(l.get("size_filled"))),
+        feats.append(dict(type="Feature", properties=dict(id=k, kind=l.get("type", "conduit"), size=l.get("g1"),
+                                                          filled=bool(l.get("size_filled"))),
                           geometry=dict(type="LineString", coordinates=[tf(a["x"], a["y"]), tf(b["x"], b["y"])])))
     for k, n in net["nodes"].items():
         feats.append(dict(type="Feature", properties=dict(id=k, kind=n["kind"], filled=bool(n.get("invert_filled")),
@@ -915,7 +999,10 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
     chamber_def = float(q.get("sewer_chamber", 1.13))
     gully_a = gully / (0.65 * math.sqrt(2 * 9.81 * 0.3)) if gully > 0 else 0     # orifice area passing the capacity at 0.3 m head
     cover_d = math.sqrt(4 * cover_a / math.pi)
-    out = dict(junctions=[], outfalls=[], storage=[], conduits=[], orifices=[], xsections=[], coords=[], nodemap=[])
+    out = dict(junctions=[], outfalls=[], storage=[], conduits=[], orifices=[], weirs=[], outlets=[], pumps=[], curves=[],
+               xsections=[], coords=[], nodemap=[])
+    cname = lambda c: "SC_" + re.sub(r"[^A-Za-z0-9_.\-]", "_", str(c))[:28]
+    need_curves = set()
     used, sid = set(), {}
     for k in net["nodes"]: sid[k] = swmm_id(k, used)
     count = dict(solid=0, grated=0, sealed=0, unlinked=0)
@@ -923,8 +1010,15 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
     for k, n in net["nodes"].items():
         node = sid[k]
         out["coords"].append(f"{node} {n['x']:.2f} {n['y']:.2f}")
+        if n["kind"] == "storage":                                # as in the source model, linked only through pipes
+            t = list(n["storage"])
+            if t[3].upper() == "TABULAR": need_curves.add(t[4]); t[4] = cname(t[4])
+            out["storage"].append(" ".join([node] + t))
+            side[node] = dict(kind="storage", z=n["invert"] + (n.get("depth") or 0)); continue
         if n["kind"] == "outfall":
-            out["outfalls"].append(f"{node} {n['invert']:.3f} FREE")
+            gate = "YES" if n.get("gated") else "NO"
+            out["outfalls"].append(f"{node} {n['invert']:.3f} FIXED {n['stage']:.3f} {gate}" if n.get("stage") is not None
+                                   else f"{node} {n['invert']:.3f} FREE {gate}")
             c = None if n.get("outside") else free_cell(n["x"], n["y"], 4, OPEN + ("chan",))
             if c:
                 tg = tag_of(node)
@@ -973,10 +1067,26 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
         count["solid"] += 1; side[node] = dict(kind="solid", z=z, gully=g if gully > 0 else None, cover=u if tb is not None else None)
     used_l = set()
     for k, l in net["links"].items():
-        lid = swmm_id(k, used_l)
+        lid = swmm_id(k, used_l); typ = l.get("type", "conduit"); us, ds = sid[l["us"]], sid[l["ds"]]
+        if typ != "conduit":
+            pr = list(l["params"])
+            if typ in ("weir", "orifice"):
+                out[typ + "s"].append(" ".join([lid, us, ds, pr[0], f"{l['crest']:.3f}"] + pr[2:]))
+                out["xsections"].append(" ".join([lid] + list(l["xs"])))
+            elif typ == "outlet":
+                rest = pr[1:]
+                if l.get("curve"): need_curves.add(l["curve"]); rest = [rest[0], cname(l["curve"])] + rest[2:]
+                out["outlets"].append(" ".join([lid, us, ds, f"{l['crest']:.3f}"] + rest))
+            else:
+                if l.get("curve"): need_curves.add(l["curve"])
+                out["pumps"].append(" ".join([lid, us, ds, cname(l["curve"]) if l.get("curve") else "*"] + pr[1:]))
+            continue
         L = max(2.0, l.get("length") or l.get("geom_len") or 2.0)
         out["conduits"].append(f"{lid} {sid[l['us']]} {sid[l['ds']]} {L:.2f} {l['n']:.4f} {l['us_inv']:.3f} {l['ds_inv']:.3f} 0 0")
         out["xsections"].append(f"{lid} {l['shape']} {l['g1']:.3f} {l.get('g2') or 0:.3f} 0 0 1")
+    for c in sorted(need_curves):
+        for row in (net.get("curves") or {}).get(c, []):
+            out["curves"].append(" ".join([cname(c)] + list(row)))
     for kk, p in tri.items(): lines[t0 + kk] = " ".join(p)
     out["stats"] = count
     if sidecar:

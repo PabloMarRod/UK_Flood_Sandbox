@@ -466,8 +466,9 @@ names) and can be changed. Levels must be in metres above Ordnance Datum.
 
 Every file is checked before anything is imported. Each issue is one of:
 
-- **error**: the import stops and the data must be corrected at source. Examples: weirs, pumps, orifices, outlets,
-  storage or dividers in a SWMM file (not supported yet); repeated manhole IDs; pipes naming manholes that don't
+- **error**: the import stops and the data must be corrected at source. Examples: flow dividers in a SWMM file
+  (not supported yet); storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
+  weirs or orifices without a cross-section, or whose level can't be worked out; repeated manhole IDs; pipes naming manholes that don't
   exist; no coordinate system placing the network on the area; levels more than 2 m from the LiDAR ground on
   average (wrong datum or units); pipe tops above the cover; more than 25% of pipe sizes or 50% of manhole levels
   missing.
@@ -481,7 +482,8 @@ Every file is checked before anything is imported. Each issue is one of:
   a new junction (SWMM allows one); treat outfalls with pipes leaving them as manholes; give each part without an
   outfall one at its lowest end manhole; cover types not recognised use the scenario default; chamber areas outside
   0.2 to 30 m2 use the default.
-- **warn**: imported as it is and noted (SWMM junctions with a surcharge depth read as sealed, chamber sizes read
+- **warn**: imported as it is and noted (weirs, orifices, outlets, pumps and storage units imported from a SWMM
+  file; tidal or time-series outfalls treated as free; SWMM junctions with a surcharge depth read as sealed, chamber sizes read
   as millimetres, covers more than 0.5 m from LiDAR, pipes falling uphill, pipes under 2 m,
   stated and drawn lengths differing by more than 20%, manholes deeper than 10 m).
 
@@ -506,6 +508,17 @@ the ground so the cover orifice can open. Gully orifices are low rectangles, so 
 A manhole with no open cell within two cells behaves as sealed. Outfalls inside the area are linked to the nearest
 open or channel cell, so their water returns to the surface; outfalls outside it take water out of the model. Pipes
 start empty: foul and dry-weather flow, subcatchments and roof connections are not modelled.
+
+SWMM files may also hold weirs (CSO overflows, for example), orifices, outlets, pumps and storage units. They keep
+their settings from the source model: crest heights are converted to elevations, pump and outlet curves and
+TABULAR storage curves are carried over (renamed), and pumps run on their curves with their start-up and shut-off
+depths (control rules aren't imported). Storage units connect to the surface only through the network. Outfalls
+keep their flap gates and fixed stages; tidal and time-series outfalls become free, as inside the area the river
+and tide come from the 2D model. GIS imports carry pipes and manholes only.
+
+Check (the test network plus a CSO weir to an overflow outfall, an orifice, and a 30 m2 tank emptied by a pump;
+120 mm in 30 minutes, 300 l/s gullies): the weir spilled 259 m3 to the overflow, the tank filled to 98% while the
+pump ran at its curve's rate, and flow routing continuity was 0.15%.
 
 Results add the water taken in (through gullies and grates, net of what they gave back, per manhole over the run), the water pushed back out
 through manholes, the water carried to the outfalls, and the number of manholes full to ground level and spilling.

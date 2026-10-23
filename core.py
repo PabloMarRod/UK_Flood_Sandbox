@@ -436,7 +436,7 @@ def write_inp(A, q, path, h5name, est=None):
     st1d = _structures(A, q, lines, cache)
     sw = sewer.model_lines(A, q, lines, cache, sewer.load(A), Path(path).with_name("sewer_nodes.json")) if q.get("sewer") else None
     if sw:
-        for k_ in ("junctions", "outfalls", "storage", "orifices", "xsections", "coords", "nodemap"):
+        for k_ in ("junctions", "outfalls", "storage", "orifices", "pumps", "curves", "xsections", "coords", "nodemap"):
             st1d[k_] += sw[k_]
     nodemap = ["[2D_TRIANGLE_NODE_MAP]"] + (["inflow OIN 0.65 4.0"] if F.get("river_inflow") else [])
     nodes, coords, inflows, ts = [], [], [], []
@@ -530,7 +530,8 @@ def write_inp(A, q, path, h5name, est=None):
     o += ["", "[JUNCTIONS]", "JX 0 1"] + st1d["junctions"] + ["[OUTFALLS]", "OX -1 FREE"] + nodes + st1d["outfalls"] + \
          (["[STORAGE]"] + st1d["storage"] if st1d["storage"] else []) + [
           "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
-         (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
+         (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + \
+         (["[WEIRS]"] + sw["weirs"] if sw and sw["weirs"] else []) + (["[OUTLETS]"] + sw["outlets"] if sw and sw["outlets"] else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
     if st1d["curves"]: o += ["[CURVES]"] + st1d["curves"]
     if st1d["controls"]: o += ["[CONTROLS]"] + st1d["controls"]
     nodemap += st1d["nodemap"]; coords += st1d["coords"]

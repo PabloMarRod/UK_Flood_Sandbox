@@ -79,8 +79,9 @@ select.num{width:auto}
 .msg.warn{background:#fbf1e6;color:var(--warn)}
 .msg.err{background:#fbe9e7;color:#9b1c1c}
 .actions{display:flex;justify-content:flex-end;gap:10px}
-.sewrow{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin:-4px 0 10px}
-.sewrow span{margin-right:auto}
+.sewrow{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--muted);margin:-4px 0 10px}
+.sewrow #sewerInfo{flex:1 1 100%}
+.sewrow #sewerShowWrap{margin-right:auto}
 .swgrid{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;align-items:center;font-size:13px;margin:6px 0 12px}
 .swgrid select{font:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
 .swh{font-size:13px;font-weight:600;margin:14px 0 6px}
@@ -1625,17 +1626,22 @@ function drawSewer(){
   if(!SEWER || !$('sewerShow').checked) return;
   const ll = c => [c[1], c[0]];
   sewerLayer = L.layerGroup(SEWER.features.map(f => f.geometry.type === 'LineString'
-    ? L.polyline(f.geometry.coordinates.map(ll), {color:'#7b4a1e', weight:1.5 + 4 * Math.min(f.properties.size || .3, 1.2), opacity:.85,
-        dashArray: f.properties.filled ? '4 4' : null}).bindTooltip(`Pipe ${f.properties.id}, ${Math.round((f.properties.size||0) * 1000)} mm${f.properties.filled ? ' (size estimated)' : ''}`)
+    ? (f.properties.kind === 'conduit'
+      ? L.polyline(f.geometry.coordinates.map(ll), {color:'#7b4a1e', weight:1.5 + 4 * Math.min(f.properties.size || .3, 1.2), opacity:.85,
+          dashArray: f.properties.filled ? '4 4' : null}).bindTooltip(`Pipe ${f.properties.id}, ${Math.round((f.properties.size||0) * 1000)} mm${f.properties.filled ? ' (size estimated)' : ''}`)
+      : L.polyline(f.geometry.coordinates.map(ll), {color:'#7a2e8a', weight:4, opacity:.9, dashArray:'2 4'})
+          .bindTooltip(`${{weir:'Weir', orifice:'Orifice', outlet:'Outlet', pump:'Pump'}[f.properties.kind] || 'Link'} ${f.properties.id}`))
     : L.circleMarker(ll(f.geometry.coordinates), f.properties.kind === 'outfall'
         ? {radius:5, color:'#fff', weight:1.5, fillColor:'#7b4a1e', fillOpacity:1}
+        : f.properties.kind === 'storage' ? {radius:6, color:'#7a2e8a', weight:1.5, fillColor:'#fff', fillOpacity:1}
         : {radius:2.6, color:'#7b4a1e', weight:1.2, fillColor:'#fff', fillOpacity:1})
-        .bindTooltip(`${f.properties.kind === 'outfall' ? 'Outfall' : 'Manhole'} ${f.properties.id}${f.properties.cover ? `, ${f.properties.cover} cover` : ''}${f.properties.chamber ? `, chamber ${(+f.properties.chamber).toFixed(2)} m²` : ''}${f.properties.filled ? ' (level estimated)' : ''}`))).addTo(map);
+        .bindTooltip(`${{outfall:'Outfall', storage:'Storage'}[f.properties.kind] || 'Manhole'} ${f.properties.id}${f.properties.cover ? `, ${f.properties.cover} cover` : ''}${f.properties.chamber ? `, chamber ${(+f.properties.chamber).toFixed(2)} m²` : ''}${f.properties.filled ? ' (level estimated)' : ''}`))).addTo(map);
 }
 function sewerUi(){
   const s = SEWER && SEWER.summary;
-  $('sewerInfo').textContent = s ? `Drainage: ${s.pipes} pipes, ${s.nodes} manholes (${SEWER.source})` : 'No drainage network';
+  $('sewerInfo').textContent = s ? `Drainage: ${s.pipes} pipes${s.structures ? ` and ${s.structures} structures` : ''}, ${s.nodes} nodes (${SEWER.source})` : 'No drainage network';
   $('sewerShowWrap').hidden = !s; $('sewerBtn').textContent = s ? 'Replace' : 'Import drainage';
+  $('sewerBtn').style.marginLeft = s ? '' : 'auto';
   $('sewerField').hidden = !s; if(s) $('sewerN').textContent = `Include the imported network (${s.pipes} pipes)`;
 }
 $('sewerShow').onchange = drawSewer;
@@ -1700,7 +1706,7 @@ function renderReport(d, accept){
   const ids = i => i.ids.length ? `<small>${i.ids.map(esc).join(', ')}${i.n > i.ids.length ? ` and ${i.n - i.ids.length} more` : ''}</small>` : '';
   const E = d.issues.filter(i => i.sev === 'error'), F = d.issues.filter(i => i.sev === 'fix'), W = d.issues.filter(i => i.sev === 'warn');
   const s = d.summary;
-  let h = `<div class="swh">Found</div><div style="font-size:13px">${s.nodes} manholes and outfalls, ${s.pipes} pipes, ${s.outfalls} outfall${s.outfalls===1?'':'s'}, ${s.length_km} km</div>`;
+  let h = `<div class="swh">Found</div><div style="font-size:13px">${s.nodes} manholes and outfalls, ${s.pipes} pipes (${s.length_km} km)${s.structures ? `, ${s.structures} structure${s.structures===1?'':'s'} (weirs, orifices, outlets, pumps)` : ''}, ${s.outfalls} outfall${s.outfalls===1?'':'s'}</div>`;
   if(E.length) h += `<div class="swh">Must be corrected in the source data</div>` +
     E.map(i => `<div class="swi e"><b>${esc(i.title)}</b>${i.n > 1 ? ` (${i.n})` : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${ids(i)}</div>`).join('');
   if(F.length) h += `<div class="swh">The app can repair these. Tick each repair you accept</div>` +

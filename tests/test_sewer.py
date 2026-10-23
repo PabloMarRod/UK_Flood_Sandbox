@@ -98,7 +98,7 @@ def test_messy_gis_is_repaired_only_with_consent(A, tmp_path):
 def _mutate(kind):
     nodes, pipes = copy.deepcopy(NET["nodes"]), copy.deepcopy(NET["pipes"]); extra = ""
     if kind == "E_UNSUPPORTED":
-        extra = "[WEIRS]\nW1 a b TRANSVERSE 1 1.8\n"
+        extra = "[DIVIDERS]\nD1 30 a CUTOFF 0.5\n"
     elif kind == "E_DATUM":
         for n in nodes:
             n["cover"] = (n["cover"] or 0) + 40; n["invert"] += 40
@@ -209,3 +209,87 @@ def test_each_cover_meets_the_surface_as_described(A, tmp_path, cover):
         assert sum(" S_" in l for l in links) == manholes + 1 and "\nOG_" not in t   # + the outfall
     else:
         assert sum(" S_" in l for l in links) == 1 and "\nOG_" not in t              # only the outfall
+
+
+def structures_inp(path):
+    """The test network plus a CSO weir to an overflow outfall, an orifice, a storage tank emptied by a pump, and a
+    flap gate on the main outfall."""
+    nodes, pipes = copy.deepcopy(NET["nodes"]), copy.deepcopy(NET["pipes"])
+    by = {n["id"]: n for n in nodes}
+    out = next(n for n in nodes if n["type"] == "outfall")
+    cso = next(n for n in nodes if n["type"] == "manhole" and n["cover"] - n["invert"] > 1.2 and
+               ((n["x"] - out["x"]) ** 2 + (n["y"] - out["y"]) ** 2) ** .5 < 120)
+    a, b = pipes[3]["us"], pipes[3]["ds"]
+    tk = by[pipes[6]["us"]]
+    lines = write_inp(path, nodes, pipes).read_text().split("\n")
+    i = lines.index("[OUTFALLS]") + 1
+    lines[i] = lines[i] + " YES"                                           # flap gate on the main outfall
+    lines.insert(i + 1, f"OVF1 {out['invert'] + 0.2} FREE NO")
+    lines.insert(lines.index("[COORDINATES]") + 1, f"OVF1 {out['x'] + 6:.2f} {out['y'] + 6:.2f}")
+    lines.insert(lines.index("[COORDINATES]") + 1, f"TK1 {tk['x'] + 4:.2f} {tk['y'] + 4:.2f}")
+    extra = f"""
+[STORAGE]
+TK1 {tk['invert'] - 1.5:.3f} 2.5 0 FUNCTIONAL 0 0 30 0 0
+[WEIRS]
+CSO1 {cso['id']} OVF1 TRANSVERSE {cso['invert'] + 0.35:.3f} 1.84 NO 0 0
+[ORIFICES]
+OR1 {a} {b} SIDE {by[a]['invert'] + 0.1:.3f} 0.65 NO
+[PUMPS]
+PMP1 TK1 {tk['id']} PC1 ON 1.0 0.3
+[CURVES]
+PC1 PUMP2 0.5 0.01
+PC1 1.0 0.02
+PC1 2.5 0.02
+"""
+    conduit = f"PTK {tk['id']} TK1 6 0.013 {tk['invert']:.3f} {tk['invert'] - 1.5:.3f} 0 0"
+    lines.insert(lines.index("[CONDUITS]") + 1, conduit)
+    lines.insert(lines.index("[XSECTIONS]") + 1, "PTK CIRCULAR 0.225 0 0 0 1")
+    lines.insert(lines.index("[XSECTIONS]") + 1, "CSO1 RECT_OPEN 0.3 1.0 0 0")
+    lines.insert(lines.index("[XSECTIONS]") + 1, "OR1 CIRCULAR 0.15 0 0 0")
+    Path(path).write_text("\n".join(lines) + extra)
+    return path, cso["id"]
+
+
+def test_structures_are_imported_and_written(A, tmp_path):
+    f, cso = structures_inp(tmp_path / "s.inp")
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "ok", [(i["code"], i["title"]) for i in r["issues"] if i["sev"] == "error"]
+    assert "W_STRUCTURES" in codes(r, "warn") and r["summary"]["structures"] == 3
+    net = r["network"]
+    assert net["links"]["CSO1"]["type"] == "weir" and net["nodes"]["TK1"]["kind"] == "storage"
+    assert any(n.get("gated") for n in net["nodes"].values())
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, r, "s.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True))
+    core.write_inp(A2, q, tmp_path / "model.inp", "model.h5")
+    t = (tmp_path / "model.inp").read_text()
+    for sec in ("[WEIRS]", "[PUMPS]", "[ORIFICES]", "[STORAGE]"):
+        assert sec in t
+    assert "S_CSO1 S_" + cso + " S_OVF1 TRANSVERSE" in t and "SC_PC1 PUMP2" in t and "S_PMP1 S_TK1" in t
+    assert " FREE YES" in t
+
+
+def test_missing_curve_blocks(A, tmp_path):
+    f, _ = structures_inp(tmp_path / "s.inp")
+    f.write_text(f.read_text().replace("PC1 PUMP2", "PCX PUMP2").replace("\nPC1 ", "\nPCX "))
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_CURVE" in codes(r, "error")
+
+
+@pytest.mark.engine
+def test_structures_run(A, tmp_path, monkeypatch):
+    f, cso = structures_inp(tmp_path / "s.inp")
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, run_check(A2, f, tmp_path, all_fixes=True), "s.inp")
+    q, _ = core.validate(A2, dict(depth=100, duration=30, sim=0.75, sewer=True, sewer_gully_lps=150))
+    run = tmp_path / "run"; run.mkdir(); monkeypatch.chdir(run)
+    core.write_inp(A2, q, run / "model.inp", "model.h5")
+    import openswmm.engine as eng
+    eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), lambda frac: None)
+    rpt = (run / "model.rpt").read_text()
+    assert "ERROR" not in rpt.split("Element Count")[0]
+    errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
+    assert errs and max(abs(e) for e in errs) < 0.5
+    flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
+             if l.strip().startswith(("S_CSO1", "S_PMP1", "S_OR1"))}
+    assert set(flows) == {"S_CSO1", "S_PMP1", "S_OR1"}
