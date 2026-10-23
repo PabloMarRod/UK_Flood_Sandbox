@@ -8,6 +8,7 @@ import base64, io, json, math
 from pathlib import Path
 import numpy as np
 import areas
+import sewer
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
@@ -282,6 +283,16 @@ def validate(A, p):
         q["damage_factor"] = min(max(float(p.get("damage_factor", 1.0)), 0.1), 10.0)
     except (TypeError, ValueError):
         q["damage_factor"] = 1.0
+    q["sewer"] = bool(p.get("sewer")) and sewer.load(A) is not None    # an imported drainage network, if the user ticks it
+    q["sewer_cover"] = p.get("sewer_cover") if p.get("sewer_cover") in ("solid", "grated", "sealed") else "solid"
+    for k_, d_, lo, hi in (("sewer_cover_area", 0.3, 0.05, 2.0), ("sewer_grate_area", 0.1, 0.01, 2.0),
+                           ("sewer_gully_lps", 20.0, 0.0, 500.0), ("sewer_chamber", 1.13, 0.2, 30.0)):
+        try:
+            q[k_] = min(max(float(p.get(k_, d_)), lo), hi)
+        except (TypeError, ValueError):
+            q[k_] = d_
+    if p.get("sewer") and not q["sewer"]:
+        warn.append("No drainage network has been imported for this area, so the run has none.")
     return q, warn
 
 
@@ -423,6 +434,10 @@ def write_inp(A, q, path, h5name, est=None):
             p_ = vl[k]; p_[2] = f"{vzz[n_]:.3f}"; lines[v0_ + k] = " ".join(p_)
     suds_used = _apply_surface_measures(A, q, lines, cache)
     st1d = _structures(A, q, lines, cache)
+    sw = sewer.model_lines(A, q, lines, cache, sewer.load(A), Path(path).with_name("sewer_nodes.json")) if q.get("sewer") else None
+    if sw:
+        for k_ in ("junctions", "outfalls", "storage", "orifices", "xsections", "coords", "nodemap"):
+            st1d[k_] += sw[k_]
     nodemap = ["[2D_TRIANGLE_NODE_MAP]"] + (["inflow OIN 0.65 4.0"] if F.get("river_inflow") else [])
     nodes, coords, inflows, ts = [], [], [], []
     if q["burst"]:
@@ -514,7 +529,7 @@ def write_inp(A, q, path, h5name, est=None):
     # a detached dummy pipe keeps 1D routing active, which the 2D module needs
     o += ["", "[JUNCTIONS]", "JX 0 1"] + st1d["junctions"] + ["[OUTFALLS]", "OX -1 FREE"] + nodes + st1d["outfalls"] + \
          (["[STORAGE]"] + st1d["storage"] if st1d["storage"] else []) + [
-          "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
+          "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
          (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
     if st1d["curves"]: o += ["[CURVES]"] + st1d["curves"]
     if st1d["controls"]: o += ["[CONTROLS]"] + st1d["controls"]
@@ -1065,6 +1080,7 @@ def postprocess(A, h5path, q, forcing, runtime_s):
         mb_error_pct=round(100 * (vin - vout) / vin, 3) if vin else 0.0,
         v_1d_held=round(v1d_net), mb_terms={k: round(v) for k, v in mb.items()},
         **_structure_stats(Path(h5path).with_suffix(".rpt")),
+        **(sewer.stats(Path(h5path).with_suffix(".rpt"), Path(h5path).with_name("sewer_nodes.json")) if q.get("sewer") else {}),
         runtime_s=round(runtime_s, 1), cells=meta["n_cells"],
         est_max=round(max(max(forcing["estuary"]["up"]), max(forcing["estuary"]["down"])), 2) if forcing.get("estuary") else None,
         est_min=round(min(min(forcing["estuary"]["up"]), min(forcing["estuary"]["down"])), 2) if forcing.get("estuary") else None,

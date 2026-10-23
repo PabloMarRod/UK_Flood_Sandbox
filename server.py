@@ -3,7 +3,7 @@
     python server.py            then open http://localhost:8765
 """
 import net  # noqa: F401  (network setup: user agent, certificates)
-import json, subprocess, sys, threading, time, traceback, uuid, webbrowser
+import json, shutil, subprocess, sys, threading, time, traceback, uuid, webbrowser
 import safeio
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -93,8 +93,62 @@ class Handler(BaseHTTPRequestHandler):
             try: self._send(500, {"error": f"server error: {e}"})
             except Exception: pass
 
+    def _sewer_post(self, p):
+        """Drainage network import: /api/sewer/<area>/upload (raw file), /check (mapping, accepted fixes, save), /remove."""
+        import sewer
+        from urllib.parse import urlparse, parse_qs
+        parts = p.strip("/").split("/")
+        if len(parts) != 4:
+            return self._send(404, {"error": "not found"})
+        try:
+            A = areas.load(parts[2])
+        except ValueError as e:
+            return self._send(404, {"error": str(e)})
+        up = Path(A["dir"]) / "sewer_upload"; act = parts[3]
+        n = int(self.headers.get("Content-Length", 0))
+        if act == "upload":
+            if n > sewer.MAX_UPLOAD:
+                return self._send(413, {"error": f"The file is larger than {sewer.MAX_UPLOAD // 1_000_000} MB."})
+            name = Path(parse_qs(urlparse(self.path).query).get("name", ["network"])[0]).name
+            ext = Path(name).suffix.lower()
+            if ext not in (".inp", ".gpkg", ".zip"):
+                return self._send(400, {"error": "Upload a SWMM .inp file, a GeoPackage (.gpkg), or a .zip holding "
+                                                 "shapefiles or an ArcGIS file geodatabase (.gdb)."})
+            shutil.rmtree(up, ignore_errors=True); up.mkdir(parents=True)
+            f = up / ("upload" + ext); f.write_bytes(self.rfile.read(n))
+            (up / "name.txt").write_text(name)
+            try:
+                return self._send(200, dict(sewer.inspect(f, up / "x"), name=name))
+            except Exception as e:
+                return self._send(400, {"error": f"Couldn't read the file: {e}"})
+        body = json.loads(self.rfile.read(n) or b"{}")
+        if act == "remove":
+            sewer.remove(A); return self._send(200, {"ok": True})
+        if act == "check":
+            f = next(iter(sorted(up.glob("upload.*"))), None) if up.exists() else None
+            if f is None:
+                return self._send(400, {"error": "Upload a file first."})
+            try:
+                r = sewer.check(f, body.get("mapping"), A, body.get("accept") or [], up / "x")
+            except Exception as e:
+                traceback.print_exc()
+                return self._send(400, {"error": f"Couldn't read the network: {e}"})
+            saved = False
+            if body.get("save") and r["status"] == "ok":
+                sewer.save(A, r, (up / "name.txt").read_text()); saved = True
+            r.pop("network", None)
+            return self._send(200, dict(r, saved=saved))
+        return self._send(404, {"error": "not found"})
+
     def _get(self):
         p = self.path.split("?")[0]
+        if p.startswith("/api/sewer/"):
+            import sewer
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+            except ValueError as e:
+                return self._send(404, {"error": str(e)})
+            return self._send(200, sewer.geojson(A) or {"none": True})
         if p == "/view3d.js":
             return self._send(200, (ROOT / "static" / "view3d.js").read_bytes(), "application/javascript; charset=utf-8")
         if p in ("/", "/index.html"):
@@ -211,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post(self):
         p = self.path.split("?")[0]
+        if p.startswith("/api/sewer/"):
+            return self._sewer_post(p)
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         if p in ("/api/check", "/api/run"):
             try:

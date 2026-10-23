@@ -7,7 +7,8 @@ the results: depths, hazard to people, buildings, roads and key sites affected, 
 
 ![3D view of Jesmond Dene, Newcastle, during a flood](docs/images/3d-view.png)
 
-> **Important.** Results are indicative and come from a simplified model (no sewer network; many river beds are
+> **Important.** Results are indicative and come from a simplified model (no sewer network unless you import
+> one; many river beds are
 > assumed). Use them to explore scenarios, teach and compare options, **not** to judge the flood risk of a
 > particular property or to support planning decisions. For official flood risk information see the national
 > flood maps of the Environment Agency, Natural Resources Wales, SEPA and DfI Rivers.
@@ -57,8 +58,9 @@ Details, assumptions and test results: [docs/technical-notes.md](docs/technical-
 
 ## Main limitations
 
-- No sewer or drainage network; roofs drain to the ground beside each building. Small, frequent storms therefore
-  flood more than they would in reality.
+- No sewer or drainage network unless you import one (see [Drainage networks](docs/technical-notes.md#drainage-networks));
+  roofs drain to the ground beside each building. Without a network, small, frequent storms flood more than they
+  would in reality.
 - River beds of most estuaries are assumed; four (Thames, Humber, Severn, Exe) are calibrated against tide gauges.
   Several estuaries use a tide gauge some distance away.
 - Flood defence data is incomplete in places, and absent in Scotland and Northern Ireland.

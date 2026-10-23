@@ -79,6 +79,17 @@ select.num{width:auto}
 .msg.warn{background:#fbf1e6;color:var(--warn)}
 .msg.err{background:#fbe9e7;color:#9b1c1c}
 .actions{display:flex;justify-content:flex-end;gap:10px}
+.sewrow{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin:-4px 0 10px}
+.sewrow span{margin-right:auto}
+.swgrid{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;align-items:center;font-size:13px;margin:6px 0 12px}
+.swgrid select{font:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.swh{font-size:13px;font-weight:600;margin:14px 0 6px}
+.swi{font-size:13px;line-height:1.45;padding:8px 10px;border-radius:7px;margin-bottom:6px;background:#fff;border:1px solid var(--line)}
+.swi.e{border-color:#e6b4ae;background:#fbe9e7;color:#7a1717}
+.swi.f{border-color:#e8d2b5;background:#fdf6ec}
+.swi small{display:block;color:var(--muted);margin-top:3px;word-break:break-word}
+.swi label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+.swi label input{margin-top:3px}
 .actions .primary{width:auto;margin:0;padding:10px 18px}
 
 .bar{height:10px;border-radius:6px;background:#e3eaeb;overflow:hidden;margin:18px 0 10px}
@@ -234,6 +245,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
     <button class="ghost sm" id="newArea">New area</button>
   </div>
   <div class="areameta"><span id="areaInfo"></span><button class="linkbtn" id="delArea" hidden>Delete area</button></div>
+  <div class="sewrow"><span id="sewerInfo">No drainage network</span>
+    <label class="chk" id="sewerShowWrap" hidden><input type="checkbox" id="sewerShow" checked> Show</label>
+    <button class="linkbtn" id="sewerBtn">Import drainage</button></div>
   <p class="runname" id="runname">Loading…</p>
   <dl id="stats"></dl>
   <div class="seg" role="group" aria-label="Map layer">
@@ -394,6 +408,23 @@ label.chk.big{font-size:14px;color:var(--ink)}
         </div>
         <div class="hint">Changes how fast parks and gardens soak up water. Parameters are assumed, not measured.</div>
       </div>
+      <div class="field" id="sewerField" hidden>
+        <span class="lbl">Drainage network</span>
+        <label class="chk"><input type="checkbox" name="sewer" id="sewerOn" checked> <span id="sewerN">Include the imported network</span></label>
+        <div class="swgrid" style="grid-template-columns:200px 1fr;margin-top:8px">
+          <span>Cover where the data has none</span>
+          <select name="sewer_cover"><option value="solid" selected>Solid</option><option value="grated">Grated or vented</option><option value="sealed">Sealed or bolted</option></select>
+          <span>Gully capacity per solid cover</span>
+          <span class="inline"><input class="num" type="number" name="sewer_gully_lps" min="0" max="500" step="5" value="20" style="width:80px" aria-label="Gully capacity in litres per second"><span class="unit">l/s</span></span>
+          <span>Opening when a cover lifts</span>
+          <span class="inline"><input class="num" type="number" name="sewer_cover_area" min="0.05" max="2" step="0.01" value="0.3" style="width:80px" aria-label="Cover opening in square metres"><span class="unit">m²</span></span>
+          <span>Open area of a grate</span>
+          <span class="inline"><input class="num" type="number" name="sewer_grate_area" min="0.01" max="2" step="0.01" value="0.1" style="width:80px" aria-label="Grate open area in square metres"><span class="unit">m²</span></span>
+          <span>Chamber area where the data has none</span>
+          <span class="inline"><input class="num" type="number" name="sewer_chamber" min="0.2" max="30" step="0.01" value="1.13" style="width:80px" aria-label="Chamber plan area in square metres"><span class="unit">m²</span></span>
+        </div>
+        <div class="hint">Solid covers take water in only through gullies (one way) and let it out only when the water inside reaches the ground and lifts the cover. Grated covers pass water both ways. Sealed covers pass none. The chamber area sets how much each manhole holds. Defaults are assumptions. Pipes start empty: foul flow isn't modelled.</div>
+      </div>
     </div>
 
     <div class="tabpanel" data-panel="tide" role="tabpanel" hidden>
@@ -468,6 +499,24 @@ label.chk.big{font-size:14px;color:var(--ink)}
 <div class="pickbar panel" id="pickbar" hidden>Click inside the dashed area to place the burst. <button class="linkbtn" id="pickCancel">Cancel</button></div>
 
 <!-- progress -->
+<dialog id="dlgSewer" aria-labelledby="sewTitle">
+  <div class="dlg">
+    <h2 id="sewTitle">Drainage network</h2>
+    <p class="sub">Import sewers or surface-water drains for this area: a SWMM file (.inp, as exported by InfoWorks ICM, SewerGEMS or PCSWMM), a GeoPackage, or a .zip holding shapefiles or an ArcGIS file geodatabase (.gdb), with manholes as points and pipes as lines. Levels in metres above Ordnance Datum. The file is checked before anything is imported.</p>
+    <div id="sewCur"></div>
+    <div class="field"><input type="file" id="sewFile" accept=".inp,.gpkg,.zip" aria-label="Network file"></div>
+    <div id="sewMapping" hidden></div>
+    <div id="sewReport"></div>
+    <div id="sewMsg"></div>
+    <div class="actions">
+      <button type="button" class="linkbtn" id="sewRemove" hidden style="margin-right:auto">Remove the current network</button>
+      <button type="button" class="ghost" id="sewClose">Close</button>
+      <button type="button" class="ghost" id="sewCheck" hidden>Check</button>
+      <button type="button" class="primary" id="sewImport" hidden disabled>Import</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="dlgRun" aria-labelledby="runTitle">
   <div class="dlg">
     <h2 id="runTitle">Running your scenario</h2>
@@ -579,7 +628,7 @@ function describe(p){
   if(p.blockage) parts.push(`culvert ${p.blockage}% blocked`);
   if(p.soil && p.soil!=='normal') parts.push(SOILS[p.soil]);
   const nm = (p.measures || []).length && p.use_measures !== false ? p.measures.length : 0;
-  return parts.join(', ') + `, ${p.sim} h simulated` + (nm ? `, with ${nm} defence${nm > 1 ? 's' : ''}` : '');
+  return parts.join(', ') + `, ${p.sim} h simulated` + (nm ? `, with ${nm} defence${nm > 1 ? 's' : ''}` : '') + (p.sewer ? ', with drainage network' : '');
 }
 
 const EST_STATUS = {
@@ -697,6 +746,7 @@ async function openArea(id){
     if(!isBase){ $('showResults').hidden = false; }
   } else clearResult();
   fit();
+  loadSewer(id);
   sceneFor = null; loadScene(id);
 }
 $('areaSel').onchange = e => openArea(e.target.value);
@@ -1000,7 +1050,9 @@ function params(){
           ...(S.estuary ? {tide_mode:fd.get('tide_mode'), tide_start:fd.get('tide_start'), tide_hw:n('tide_hw'), tide_lw:n('tide_lw'),
               tide_hw_time:n('tide_hw_time'), surge_peak:n('surge_peak'), surge_time:n('surge_time'), surge_dur:n('surge_dur'),
               slr:n('slr'), river_mode:fd.get('river_mode'), river_base:n('river_base'), river_peak:n('river_peak')} : {}),
-          measures: MEAS.map(toBNG), use_measures: MEAS.length > 0 && $('useDef').checked};
+          measures: MEAS.map(toBNG), use_measures: MEAS.length > 0 && $('useDef').checked,
+          sewer: !!SEWER && fd.get('sewer') === 'on', sewer_cover: fd.get('sewer_cover'), sewer_gully_lps: n('sewer_gully_lps'),
+          sewer_cover_area: n('sewer_cover_area'), sewer_grate_area: n('sewer_grate_area'), sewer_chamber: n('sewer_chamber')};
 }
 function buildRivers(){
   const list = S.inflows || [];
@@ -1503,6 +1555,10 @@ function showResults(res){
     .concat(s.measures_cost ? [['Cost of your defences (as entered)', money(s.measures_cost, true), b && b.measures_cost ? money(b.measures_cost, true) : '']] : [])
     .concat(s.measures_cost && b && b.damage_eur != null ? [['Damage avoided per unit of cost, this storm', ((b.damage_eur - s.damage_eur) * DMG_FACTOR / s.measures_cost).toFixed(2), '']] : [])
     .concat(s.v_tanks || s.v_pumped ? [['Water held in tanks / pumped away', `${fmtVol(s.v_tanks || 0)} / ${fmtVol(s.v_pumped || 0)}`, b && (b.v_tanks || b.v_pumped) ? `${fmtVol(b.v_tanks || 0)} / ${fmtVol(b.v_pumped || 0)}` : '']] : [])
+    .concat(s.v_sewer_in != null ? [['Water taken into the drainage network', fmtVol(s.v_sewer_in), b && b.v_sewer_in != null ? fmtVol(b.v_sewer_in) : '']] : [])
+    .concat(s.v_sewer_spill != null ? [['Water pushed back out through manholes', fmtVol(s.v_sewer_spill), b && b.v_sewer_spill != null ? fmtVol(b.v_sewer_spill) : '']] : [])
+    .concat(s.v_sewer_out != null ? [['Water carried to the network outfalls', fmtVol(s.v_sewer_out), b && b.v_sewer_out != null ? fmtVol(b.v_sewer_out) : '']] : [])
+    .concat(s.n_surcharged != null ? [['Manholes full to ground level / spilling', `${s.n_surcharged} / ${s.n_spilling}`, b && b.n_surcharged != null ? `${b.n_surcharged} / ${b.n_spilling}` : '']] : [])
     .concat([['Your defences in this run', String(s.measures || 0), b ? String(b.measures || 0) : '']]));
   const det = [];
   if(s.sites_list && s.sites_list.length) det.push('<b>Key sites affected:</b> ' + s.sites_list.map(x => `${x.name} (${x.kind.toLowerCase()}, ${x.depth} m)`).join('; ') + '.');
@@ -1549,6 +1605,123 @@ $('showResults').onclick = () => R && showResults(R);
   const cur = await fetch('/api/current').then(r=>r.json()).catch(()=>({}));
   if(cur.kind){ if(cur.kind==='run' && cur.params && cur.params.area !== AREA.id){ $('areaSel').value = cur.params.area; await openArea(cur.params.area); } attach(cur); }
 })();
+
+/* ---------------- drainage network ---------------- */
+let SEWER = null, sewerLayer = null, SWINS = null, SWREP = null;
+const SWROLES = {
+  node: [['node_id','Manhole ID *'],['cover','Cover level'],['invert','Invert level'],['depth','Depth'],['node_type','Type (finds outfalls)'],
+         ['cover_type','Cover type (solid, grated, sealed)'],['chamber_area','Chamber area (m²)'],['chamber_size','Chamber diameter or width']],
+  link: [['link_id','Pipe ID'],['us_node','Upstream manhole'],['ds_node','Downstream manhole'],['size','Size (diameter or width) *'],
+         ['height','Height'],['shape','Shape'],['us_invert','Upstream invert'],['ds_invert','Downstream invert'],['length','Length'],
+         ['rough',"Roughness (Manning's n)"]]};
+async function loadSewer(id){
+  if(sewerLayer){ sewerLayer.remove(); sewerLayer = null; }
+  SEWER = null;
+  try { const g = await fetch('/api/sewer/' + id).then(r => r.json()); if(!g.none && AREA && AREA.id === id) SEWER = g; } catch(e){}
+  drawSewer(); sewerUi();
+}
+function drawSewer(){
+  if(sewerLayer){ sewerLayer.remove(); sewerLayer = null; }
+  if(!SEWER || !$('sewerShow').checked) return;
+  const ll = c => [c[1], c[0]];
+  sewerLayer = L.layerGroup(SEWER.features.map(f => f.geometry.type === 'LineString'
+    ? L.polyline(f.geometry.coordinates.map(ll), {color:'#7b4a1e', weight:1.5 + 4 * Math.min(f.properties.size || .3, 1.2), opacity:.85,
+        dashArray: f.properties.filled ? '4 4' : null}).bindTooltip(`Pipe ${f.properties.id}, ${Math.round((f.properties.size||0) * 1000)} mm${f.properties.filled ? ' (size estimated)' : ''}`)
+    : L.circleMarker(ll(f.geometry.coordinates), f.properties.kind === 'outfall'
+        ? {radius:5, color:'#fff', weight:1.5, fillColor:'#7b4a1e', fillOpacity:1}
+        : {radius:2.6, color:'#7b4a1e', weight:1.2, fillColor:'#fff', fillOpacity:1})
+        .bindTooltip(`${f.properties.kind === 'outfall' ? 'Outfall' : 'Manhole'} ${f.properties.id}${f.properties.cover ? `, ${f.properties.cover} cover` : ''}${f.properties.chamber ? `, chamber ${(+f.properties.chamber).toFixed(2)} m²` : ''}${f.properties.filled ? ' (level estimated)' : ''}`))).addTo(map);
+}
+function sewerUi(){
+  const s = SEWER && SEWER.summary;
+  $('sewerInfo').textContent = s ? `Drainage: ${s.pipes} pipes, ${s.nodes} manholes (${SEWER.source})` : 'No drainage network';
+  $('sewerShowWrap').hidden = !s; $('sewerBtn').textContent = s ? 'Replace' : 'Import drainage';
+  $('sewerField').hidden = !s; if(s) $('sewerN').textContent = `Include the imported network (${s.pipes} pipes)`;
+}
+$('sewerShow').onchange = drawSewer;
+$('sewerBtn').onclick = () => {
+  SWINS = null; SWREP = null; $('sewFile').value = '';
+  $('sewMapping').hidden = true; $('sewMapping').innerHTML = ''; $('sewReport').innerHTML = ''; $('sewMsg').innerHTML = '';
+  $('sewCheck').hidden = true; $('sewImport').hidden = true; $('sewRemove').hidden = !SEWER;
+  $('sewCur').innerHTML = SEWER ? `<div class="msg warn">This area already has a network (${SEWER.summary.pipes} pipes from ${esc(SEWER.source)}). Importing replaces it.</div>` : '';
+  $('dlgSewer').showModal();
+};
+$('sewClose').onclick = () => $('dlgSewer').close();
+$('sewRemove').onclick = async () => {
+  await fetch(`/api/sewer/${AREA.id}/remove`, {method:'POST', body:'{}'});
+  $('dlgSewer').close(); loadSewer(AREA.id);
+};
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function swMsg(t, cls){ $('sewMsg').innerHTML = t ? `<div class="msg ${cls||''}">${t}</div>` : ''; }
+$('sewFile').onchange = async () => {
+  const f = $('sewFile').files[0]; if(!f) return;
+  $('sewReport').innerHTML = ''; $('sewImport').hidden = true; swMsg('Reading the file…');
+  const r = await fetch(`/api/sewer/${AREA.id}/upload?name=${encodeURIComponent(f.name)}`, {method:'POST', body:f});
+  const d = await r.json();
+  if(!r.ok){ swMsg(esc(d.error), 'err'); return; }
+  SWINS = d; swMsg('');
+  if(d.kind === 'gis') buildMapping(d); else { $('sewMapping').hidden = true; }
+  $('sewCheck').hidden = false; runCheck();
+};
+function buildMapping(d){
+  const m = d.mapping, opt = (list, sel) => '<option value="">(none)</option>' + list.map(v => `<option${v===sel?' selected':''}>${esc(v)}</option>`).join('');
+  const lay = k => d.layers.filter(l => l.kind === k).map(l => l.name);
+  const fields = name => (d.layers.find(l => l.name === name) || {fields:[]}).fields;
+  const block = (kind, title, layerKey, fKey, layers) => {
+    const ln = m[layerKey];
+    return `<div class="swh">${title}</div><div class="swgrid"><span>Layer</span><select data-layer="${layerKey}">${opt(layers, ln)}</select>` +
+      SWROLES[kind].map(([r, lbl]) => `<span>${lbl}</span><select data-f="${fKey}" data-r="${r}">${opt(fields(ln), (m[fKey]||{})[r])}</select>`).join('') + '</div>';
+  };
+  $('sewMapping').innerHTML = block('node', 'Manholes (points)', 'node_layer', 'node_fields', lay('point')) +
+    block('link', 'Pipes (lines)', 'link_layer', 'link_fields', lay('line')) +
+    '<div class="hint" style="font-size:12px;color:var(--muted);margin-bottom:8px">Fields were matched by name; check them. Without upstream and downstream fields, pipe ends are joined to the nearest manhole.</div>';
+  $('sewMapping').hidden = false;
+  $('sewMapping').querySelectorAll('select[data-layer]').forEach(sel => sel.onchange = () => {
+    m[sel.dataset.layer] = sel.value; const fk = sel.dataset.layer === 'node_layer' ? 'node_fields' : 'link_fields'; m[fk] = {}; buildMapping(d); });
+}
+function readMapping(){
+  if(!SWINS || SWINS.kind !== 'gis') return null;
+  const m = {node_fields:{}, link_fields:{}};
+  $('sewMapping').querySelectorAll('select[data-layer]').forEach(s => m[s.dataset.layer] = s.value || null);
+  $('sewMapping').querySelectorAll('select[data-f]').forEach(s => { if(s.value) m[s.dataset.f][s.dataset.r] = s.value; });
+  return m;
+}
+$('sewCheck').onclick = () => runCheck();
+async function runCheck(save){
+  const accept = [...document.querySelectorAll('#sewReport input[data-fix]:checked')].map(x => x.dataset.fix);
+  swMsg(save ? 'Importing…' : 'Checking…');
+  const r = await fetch(`/api/sewer/${AREA.id}/check`, {method:'POST', body:JSON.stringify({mapping:readMapping(), accept, save:!!save})});
+  const d = await r.json();
+  if(!r.ok){ swMsg(esc(d.error), 'err'); $('sewReport').innerHTML = ''; $('sewImport').hidden = true; return; }
+  if(d.saved){ $('dlgSewer').close(); loadSewer(AREA.id); return; }
+  SWREP = d; renderReport(d, accept);
+}
+function renderReport(d, accept){
+  const ids = i => i.ids.length ? `<small>${i.ids.map(esc).join(', ')}${i.n > i.ids.length ? ` and ${i.n - i.ids.length} more` : ''}</small>` : '';
+  const E = d.issues.filter(i => i.sev === 'error'), F = d.issues.filter(i => i.sev === 'fix'), W = d.issues.filter(i => i.sev === 'warn');
+  const s = d.summary;
+  let h = `<div class="swh">Found</div><div style="font-size:13px">${s.nodes} manholes and outfalls, ${s.pipes} pipes, ${s.outfalls} outfall${s.outfalls===1?'':'s'}, ${s.length_km} km</div>`;
+  if(E.length) h += `<div class="swh">Must be corrected in the source data</div>` +
+    E.map(i => `<div class="swi e"><b>${esc(i.title)}</b>${i.n > 1 ? ` (${i.n})` : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${ids(i)}</div>`).join('');
+  if(F.length) h += `<div class="swh">The app can repair these. Tick each repair you accept</div>` +
+    F.map(i => `<div class="swi f"><label><input type="checkbox" data-fix="${i.code}"${accept.includes(i.code) ? ' checked' : ''}${E.length ? ' disabled' : ''}>
+      <span><b>${esc(i.title)}</b>${i.n > 1 ? ` (${i.n})` : ''}<small>Repair: ${esc(i.fix)}${i.detail ? ' ' + esc(i.detail) : ''}</small>${ids(i)}</span></label></div>`).join('');
+  if(W.length) h += `<div class="swh">Imported as they are</div>` +
+    W.map(i => `<div class="swi"><b>${esc(i.title)}</b>${i.n > 1 ? ` (${i.n})` : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${ids(i)}</div>`).join('');
+  $('sewReport').innerHTML = h;
+  $('sewReport').querySelectorAll('input[data-fix]').forEach(x => x.onchange = sewStatus);
+  sewStatus();
+}
+function sewStatus(){
+  const d = SWREP; if(!d) return;
+  const E = d.issues.filter(i => i.sev === 'error');
+  const open = [...document.querySelectorAll('#sewReport input[data-fix]')].filter(x => !x.checked).length;
+  $('sewImport').hidden = false; $('sewImport').disabled = !!(E.length || open);
+  if(E.length) swMsg(d.issues.length > E.length ? 'Import stopped. Correct the items in red in your GIS or modelling software, export again and upload the new file. Other checks run once these are fixed.' : 'Import stopped. Correct the items in red in your GIS or modelling software, export again and upload the new file.', 'err');
+  else if(open) swMsg(`Accept the ${open} remaining repair${open > 1 ? 's' : ''} to import, or correct ${open > 1 ? 'them' : 'it'} in the source data and upload again.`, 'warn');
+  else swMsg('Ready to import.');
+}
+$('sewImport').onclick = () => runCheck(true);
 </script>
 </body>
 </html>

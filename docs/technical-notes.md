@@ -162,8 +162,8 @@ would otherwise never enter the model; in a city centre that is up to half the a
 Each building now drains its roof through a virtual downpipe into the lowest open cell beside it (searching up to
 60 m), on ground connected to the wider street network rather than enclosed courtyards or light wells. The roof
 area is exactly the area of the removed cells, so the model receives the rain it previously missed. Downpipe cells
-get an inflow equal to rain intensity x roof area; the results note lists roof water separately. Sewers are not
-modelled, so this represents roof water reaching the surface (blocked or overwhelmed drains).
+get an inflow equal to rain intensity x roof area; the results note lists roof water separately. Imported drainage
+networks don't take roof water yet, so this represents roof water reaching the surface (blocked or overwhelmed drains).
 
 Effect in central Newcastle (0.5 km2, 30 mm in an hour): 7,330 m3 of roof water, land wet deeper than 0.3 m from
 0.40 to 0.76 ha, peak outflow from 1.37 to 4.0 m3/s. The Jesmond Vale 2012 replay was regenerated with roofs
@@ -456,6 +456,72 @@ of central London takes about half a minute this way.
 Gaps in the LIDAR (often over water and foreshore) are filled from the nearest valid ground so those cells stay in
 the mesh; the filled share is recorded in each area's `mesh_meta.json` (`terrain_filled_pct`).
 
+## Drainage networks
+
+An area can hold one imported sewer or surface-water drainage network (`sewer.py`), opened from the side panel
+("Import drainage"). Accepted files: a SWMM input file (`.inp`, for example exported from InfoWorks ICM, SewerGEMS
+or PCSWMM), a GeoPackage, or a `.zip` holding shapefiles or an ArcGIS file geodatabase (`.gdb`). GIS data needs a
+point layer of manholes and a line layer of pipes; fields are matched by name (InfoWorks and common water-company
+names) and can be changed. Levels must be in metres above Ordnance Datum.
+
+Every file is checked before anything is imported. Each issue is one of:
+
+- **error**: the import stops and the data must be corrected at source. Examples: weirs, pumps, orifices, outlets,
+  storage or dividers in a SWMM file (not supported yet); repeated manhole IDs; pipes naming manholes that don't
+  exist; no coordinate system placing the network on the area; levels more than 2 m from the LiDAR ground on
+  average (wrong datum or units); pipe tops above the cover; more than 25% of pipe sizes or 50% of manhole levels
+  missing.
+- **fix**: the app can repair it, and does so only if the user ticks that repair. All repairs are shown in one pass;
+  any left unticked stops the import. Repairs: convert coordinates (British National Grid, Irish Grid, ITM, WGS84);
+  sizes from millimetres; join pipe ends to manholes within 5 m, or add a junction further away; fill missing sizes
+  from the next pipe (225 mm if none); cover levels from LiDAR; inverts from connected pipes, depth, neighbours or
+  1.5 m below cover; pipe inverts from their manholes; lower manholes above their pipes; Manning's n of 0.013 where
+  missing or not a Manning value; rename repeated pipe IDs; drop manholes with no pipe; keep only the part on the
+  area (pipes leaving it end at a free outfall; pipes entering it are dropped); join several pipes into an outfall at
+  a new junction (SWMM allows one); treat outfalls with pipes leaving them as manholes; give each part without an
+  outfall one at its lowest end manhole; cover types not recognised use the scenario default; chamber areas outside
+  0.2 to 30 m2 use the default.
+- **warn**: imported as it is and noted (SWMM junctions with a surcharge depth read as sealed, chamber sizes read
+  as millimetres, covers more than 0.5 m from LiDAR, pipes falling uphill, pipes under 2 m,
+  stated and drawn lengths differing by more than 20%, manholes deeper than 10 m).
+
+In a run, each manhole is a SWMM storage node from its invert, with a constant plan area: the chamber area from
+the data (a "chamber area" field, or a "chamber diameter or width" read as circular, in mm or m), else the
+scenario's default (1.13 m2, a 1.2 m circular chamber; an assumption). Pipes are conduits (Manning, link offsets as
+elevations). How a manhole meets the surface depends on its cover type, read from a "cover type" field (words such
+as solid, grating, vented, sealed, bolted; others are offered a repair that uses the default; a SWMM junction with a
+surcharge depth is read as sealed):
+
+- **solid** (the default): water enters only through a gully. One triangle of the manhole's cell is linked to a
+  gully node, which drains into the manhole through a one-way (flap) orifice sized to pass the gully capacity at
+  0.3 m head (default 20 l/s per manhole, an assumption). Water leaves only when the manhole's level passes the
+  ground: a one-way orifice the size of the cover opening (default 0.3 m2) discharges to a coupled outfall on the
+  cell's other triangle, as the roof downpipes do.
+- **grated**: one two-way link through the grate's open area (default 0.1 m2, an assumption).
+- **sealed**: no link; the manhole pressurises without spilling.
+
+The engine measures exchange from a node's top, so gully nodes and grated manholes have their top at the ground
+(gully nodes may pressurise under ponded water through a surcharge depth); solid manholes may rise up to 10 m above
+the ground so the cover orifice can open. Gully orifices are low rectangles, so they never raise a gully node's top.
+A manhole with no open cell within two cells behaves as sealed. Outfalls inside the area are linked to the nearest
+open or channel cell, so their water returns to the surface; outfalls outside it take water out of the model. Pipes
+start empty: foul and dry-weather flow, subcatchments and roof connections are not modelled.
+
+Results add the water taken in (through gullies and grates, net of what they gave back, per manhole over the run), the water pushed back out
+through manholes, the water carried to the outfalls, and the number of manholes full to ground level and spilling.
+They come from the engine's report and the run's `sewer_nodes.json`.
+
+Checks (synthetic network, 1 h simulated, 120 mm in 30 minutes): with solid covers and 300 l/s gullies, 1,166 m3
+entered, 9 manholes filled to the ground, one lifted its cover and spilled 164 m3, and 923 m3 reached the outfall;
+with grated covers, 1,215 m3 entered, 318 m3 came back out at two manholes and 858 m3 reached the outfall; sealed
+covers exchanged nothing. Flow routing continuity stayed within 0.15%. Water in, out and spilled differ by the water
+still in the pipes plus up to about 3%, as the report gives each manhole's exchange as a net figure. Gully nodes
+under ponded water show local node continuity errors in the report as water moves in and out between steps; the
+system totals close.
+
+`tests/test_sewer.py` covers each blocking error, the repairs (including that a declined repair blocks saving),
+cover types and chamber sizes on import, how each cover type is linked to the surface, and a coupled engine run.
+
 ## Model notes
 
 - Each area is a 5 or 10 m grid inside the drawn outline, each square split into two triangles; buildings
@@ -480,7 +546,7 @@ the mesh; the filled share is recorded in each area's `mesh_meta.json` (`terrain
   effective opening width in proportion.
 - Ground condition sets Horton infiltration on green and garden areas (dry, normal, saturated) or switches it off.
   All infiltration parameters are assumed.
-- Not included: sewers, runoff from outside the outline, channel beds of streams below the surveyed water surface.
+- Not included unless imported: sewers. Not included: runoff from outside the outline, channel beds of streams below the surveyed water surface.
   Results are indicative and not validated.
 - Engine quirks found in openswmm 6.0.0a4: the rain gauge scale factor is not applied to 2D rain
   (rain is written at full intensity), and a model needs at least one 1D element, so a detached
