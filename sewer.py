@@ -20,7 +20,6 @@ import numpy as np
 
 SHAPES = {"CIRCULAR": 1, "RECT_CLOSED": 2, "EGG": 1, "HORSESHOE": 1, "RECT_OPEN": 2, "TRAPEZOIDAL": 4,
           "TRIANGULAR": 2, "ELLIPTICAL": 2, "ARCH": 2, "FORCE_MAIN": 2, "BASKETHANDLE": 1}
-UNSUPPORTED_INP = ("DIVIDERS",)
 STRUCTURES = ("WEIRS", "ORIFICES", "OUTLETS", "PUMPS")
 IGNORED_INP = ("SUBCATCHMENTS", "SUBAREAS", "INFILTRATION", "DWF", "INFLOWS", "RDII", "LOSSES", "LID_USAGE",
                "RAINGAGES", "POLLUTANTS", "LANDUSES", "BUILDUP", "WASHOFF", "TREATMENT", "GROUNDWATER", "CONTROLS")
@@ -33,6 +32,7 @@ MAX_MISSING_SIZE = 0.25    # share of pipes without a size above which the data 
 MAX_MISSING_LEVEL = 0.5    # share of nodes without any level above which the data is too poor to infill
 
 # field names seen in InfoWorks exports, water company GIS and Esri templates (lower case, no spaces)
+FLAP_SYN = ["flap_valve", "flapvalve", "flap", "flap_gate", "nrv", "non_return", "gated"]
 SYN = {
     "node_id": ["node_id", "nodeid", "manholeref", "mh_ref", "mhref", "manhole_id", "manholeid", "assetid", "asset_id",
                 "unitid", "reference", "ref", "id", "name", "facilityid", "node"],
@@ -46,6 +46,7 @@ SYN = {
     "chamber_area": ["chamber_area", "chamberarea", "chamber_plan_area", "plan_area", "mh_area"],
     "chamber_size": ["chamber_size", "chambersize", "chamber_dia", "chamber_diameter", "chamber_width", "mh_size",
                      "mh_dia", "manhole_size", "shaft_size"],
+    "flap": FLAP_SYN,
     "node_type": ["node_type", "nodetype", "type", "category", "asset_type", "assettype", "feature_type"],
     "link_id": ["link_id", "linkid", "pipe_id", "pipeid", "pipe_ref", "assetid", "asset_id", "id", "name",
                 "facilityid", "link_suffix"],
@@ -65,8 +66,37 @@ SYN = {
     "rough": ["bottom_roughness_n", "roughness", "manning", "manning_n", "n", "rough", "top_roughness_n",
               "bottom_roughness_cw"],
 }
-NODE_FIELDS = ("node_id", "cover", "invert", "depth", "node_type", "cover_type", "chamber_area", "chamber_size")
-LINK_FIELDS = ("link_id", "us_node", "ds_node", "size", "height", "shape", "us_invert", "ds_invert", "length", "rough")
+STRUCT_SYN = {
+    "weir": dict(link_id=SYN["link_id"], us_node=SYN["us_node"], ds_node=SYN["ds_node"],
+                 crest=["crest", "crest_level", "crestlevel", "crest_elev", "weir_level", "sill_level", "spill_level"],
+                 width=["width", "crest_length", "crestlength", "weir_length", "weir_width", "length"],
+                 height=["height", "opening_height", "max_height", "weir_height"],
+                 cd=["discharge_coeff", "discharge_coefficient", "dischargecoeff", "cd", "coefficient", "coeff"],
+                 flap=["flap_valve", "flapvalve", "flap", "flap_gate", "nrv", "non_return", "gated"]),
+    "orifice": dict(link_id=SYN["link_id"], us_node=SYN["us_node"], ds_node=SYN["ds_node"],
+                    invert=["invert_level", "invertlevel", "invert", "level", "orifice_level", "crest"],
+                    diameter=["diameter", "orifice_diameter", "dia", "size", "bore"],
+                    width=["width", "opening_width"], height=["height", "opening_height"],
+                    cd=["discharge_coeff", "discharge_coefficient", "cd", "coefficient", "coeff"],
+                    design_flow=["design_flow", "designflow", "limiting_discharge", "limit_discharge", "q_design",
+                                 "max_flow", "pass_forward_flow", "pff", "flow_limit"],
+                    design_head=["design_head", "designhead", "head"],
+                    flap=["flap_valve", "flapvalve", "flap", "flap_gate", "nrv", "non_return", "gated"]),
+    "pump": dict(link_id=SYN["link_id"], us_node=SYN["us_node"], ds_node=SYN["ds_node"],
+                 rate=["discharge", "rate", "pump_rate", "pumprate", "capacity", "flow", "pump_capacity", "duty"],
+                 switch_on=["switch_on", "switch_on_level", "switchon", "on_level", "start_level", "cut_in"],
+                 switch_off=["switch_off", "switch_off_level", "switchoff", "off_level", "stop_level", "cut_out"]),
+    "storage": dict(node_id=SYN["node_id"],
+                    floor=["floor_level", "floorlevel", "invert_level", "invert", "base_level", "chamber_floor", "il"],
+                    depth=["depth", "max_depth", "height", "tank_depth"],
+                    area=["plan_area", "planarea", "area", "surface_area", "chamber_area"],
+                    volume=["volume", "capacity", "storage_volume", "tank_volume"]),
+}
+STRUCT_WORDS = {"weir": ("weir", "cso", "overflow", "spill"),
+                "orifice": ("orifice", "flow_control", "flowcontrol", "hydrobrake", "vortex", "throttle", "control"),
+                "pump": ("pump",), "storage": ("storage", "tank", "attenuation", "detention", "chamber")}
+NODE_FIELDS = ("node_id", "cover", "invert", "depth", "node_type", "cover_type", "chamber_area", "chamber_size", "flap")
+LINK_FIELDS = ("link_id", "us_node", "ds_node", "size", "height", "shape", "us_invert", "ds_invert", "length", "rough", "flap")
 SHAPE_WORDS = {"CIRC": "CIRCULAR", "ROUND": "CIRCULAR", "CIRCULAR": "CIRCULAR", "C": "CIRCULAR", "RECT": "RECT_CLOSED",
                "RECTANGULAR": "RECT_CLOSED", "BOX": "RECT_CLOSED", "R": "RECT_CLOSED", "EGG": "EGG", "E": "EGG",
                "OVAL": "EGG", "HORSESHOE": "HORSESHOE", "ARCH": "ARCH", "ELLIPTICAL": "ELLIPTICAL"}
@@ -167,11 +197,12 @@ def read_inp(src):
     return sec
 
 
-def guess(fields, role_list):
+def guess(fields, role_list, syn=None):
+    syn = syn or SYN
     low = {re.sub(r"[\s\-]", "_", f.lower()): f for f in fields}
     out = {}
     for role in role_list:
-        for s in SYN[role]:
+        for s in syn[role]:
             if s in low and low[s] not in out.values():
                 out[role] = low[s]; break
     return out
@@ -183,14 +214,23 @@ def inspect(path, work):
     if kind_of(src) == "inp":
         sec = read_inp(src)
         return dict(kind="inp", source=str(src),
-                    counts={k: len(v) for k, v in sec.items() if k in ("JUNCTIONS", "OUTFALLS", "CONDUITS") + UNSUPPORTED_INP})
+                    counts={k: len(v) for k, v in sec.items() if k in ("JUNCTIONS", "OUTFALLS", "CONDUITS", "STORAGE", "DIVIDERS") + STRUCTURES})
     layers = read_layers(src)
     pts = [l for l in layers if l["kind"] == "point"]; lns = [l for l in layers if l["kind"] == "line"]
     pick = lambda ls, words: next((l for l in ls if any(w in l["name"].lower() for w in words)), ls[0] if ls else None)
     nl = pick(pts, ("manhole", "node", "chamber", "mh")); ll = pick(lns, ("pipe", "sewer", "link", "conduit", "main"))
     mapping = dict(node_layer=nl and nl["name"], link_layer=ll and ll["name"],
                    node_fields=guess(nl["fields"], NODE_FIELDS) if nl else {},
-                   link_fields=guess(ll["fields"], LINK_FIELDS) if ll else {})
+                   link_fields=guess(ll["fields"], LINK_FIELDS) if ll else {},
+                   struct_layers={}, struct_fields={})
+    used = {nl and nl["name"], ll and ll["name"]}
+    for kind, words in STRUCT_WORDS.items():
+        pool = [l for l in layers if l["name"] not in used and
+                (l["kind"] == "line" if kind != "storage" else l["kind"] in ("point", "other"))]
+        hit = next((l for l in pool if any(w in l["name"].lower() for w in words)), None)
+        if hit:
+            used.add(hit["name"]); mapping["struct_layers"][kind] = hit["name"]
+            mapping["struct_fields"][kind] = guess(hit["fields"], list(STRUCT_SYN[kind]), STRUCT_SYN[kind])
     return dict(kind="gis", source=str(src), mapping=mapping,
                 layers=[dict(name=l["name"], kind=l["kind"], epsg=l["epsg"], fields=l["fields"], count=len(l["rows"]))
                         for l in layers])
@@ -219,6 +259,19 @@ def from_inp(src):
         sur = _num(p[4]) if len(p) > 4 else 0
         nodes[p[0]] = dict(kind="junction", invert=inv, cover=(inv + md) if inv is not None and md else None, depth=md or None,
                            cover_raw="sealed" if sur and sur > 0 else None, from_surdepth=bool(sur and sur > 0))
+    divs = []
+    for p in sec.get("DIVIDERS", []):
+        if len(p) < 5: continue
+        extra = {"OVERFLOW": 0, "CUTOFF": 1, "TABULAR": 1, "WEIR": 3}.get(p[3].upper(), 0)
+        inv = _num(p[1]); md = _num(p[4 + extra]) if len(p) > 4 + extra else None
+        sur = _num(p[6 + extra]) if len(p) > 6 + extra else 0
+        if p[0] in nodes: dup_n.append(p[0])
+        nodes[p[0]] = dict(kind="junction", invert=inv, cover=(inv + md) if inv is not None and md else None, depth=md or None,
+                           cover_raw="sealed" if sur and sur > 0 else None, from_surdepth=bool(sur and sur > 0))
+        divs.append(p[0])
+    if divs: iss.append(issue("W_DIVIDER", "warn", "Flow dividers imported as junctions", divs,
+                              "This model routes flow by dynamic wave, under which SWMM treats a flow divider as a "
+                              "plain junction; the split follows the pipe hydraulics."))
     odd_out = []
     for p in sec.get("OUTFALLS", []):
         if p[0] in nodes: dup_n.append(p[0])
@@ -328,10 +381,6 @@ def from_inp(src):
                                fix="Add a suffix (_2, _3) to the repeated names"))
     if bad_shape: iss.append(issue("E_SHAPE", "error", "Pipe shapes this app does not model", bad_shape,
                                    "Custom and irregular sections aren't supported. Replace them with a standard shape."))
-    un = [f"{s} ({len(sec[s])})" for s in UNSUPPORTED_INP if sec.get(s)]
-    if un: iss.append(issue("E_UNSUPPORTED", "error", "Structures this app can't import yet", un,
-                            "Flow dividers aren't supported. Replace each with what it does in the source model, for "
-                            "example a weir to the overflow branch and a pipe for the main flow, then export again."))
     sealed = [k for k, n in nodes.items() if n.get("from_surdepth")]
     if sealed: iss.append(issue("W_SEALED", "warn", "Manholes with a surcharge depth treated as sealed", sealed,
                                 "SWMM's surcharge depth means the manhole can pressurise without spilling."))
@@ -371,7 +420,8 @@ def from_gis(src, mapping):
                               depth=_num(r.get(nf.get("depth"))) if nf.get("depth") else None,
                               cover_raw=str(r.get(nf["cover_type"])).strip() if nf.get("cover_type") and r.get(nf["cover_type"]) not in (None, "") else None,
                               chamber_area=_num(r.get(nf.get("chamber_area"))) if nf.get("chamber_area") else None,
-                              chamber_size=_num(r.get(nf.get("chamber_size"))) if nf.get("chamber_size") else None)
+                              chamber_size=_num(r.get(nf.get("chamber_size"))) if nf.get("chamber_size") else None,
+                              flap=_yes(r.get(nf["flap"])) if nf.get("flap") else False)
     if not lf.get("size"):
         iss.append(issue("E_FIELDS", "error", "Pipe layer: no size field chosen", [],
                          "Choose the field with the pipe diameter or width."))
@@ -396,17 +446,154 @@ def from_gis(src, mapping):
                           ds_inv=_num(r.get(lf["ds_invert"])) if lf.get("ds_invert") else None,
                           length=_num(r.get(lf["length"])) if lf.get("length") else None,
                           n=_num(r.get(lf["rough"])) if lf.get("rough") else None,
-                          geom_len=g.length, ends=[tuple(g.coords[0][:2]), tuple(g.coords[-1][:2])])
+                          geom_len=g.length, ends=[tuple(g.coords[0][:2]), tuple(g.coords[-1][:2])],
+                          type="conduit", flap=_yes(r.get(lf["flap"])) if lf.get("flap") else False)
+    iss += _gis_structures(layers, mapping, nodes, links, crs, dup_n, dup_l)
     if dup_n: iss.append(issue("E_DUP_NODE", "error", "Manhole IDs used more than once", dup_n,
                                "Pipes can't be connected reliably. Make the IDs unique in the source data."))
     if dup_l: iss.append(issue("F_DUP_LINK", "fix", "Pipe IDs used more than once", dup_l,
                                fix="Add a suffix (_2, _3) to the repeated IDs"))
-    unknown_shape = sorted({l["raw_shape"] for l in links.values() if l["raw_shape"] and l["raw_shape"] not in SHAPE_WORDS
+    unknown_shape = sorted({l["raw_shape"] for l in links.values() if l.get("raw_shape") and l["raw_shape"] not in SHAPE_WORDS
                             and l["raw_shape"][:4] not in SHAPE_WORDS})
     if unknown_shape:
         iss.append(issue("F_SHAPE", "fix", "Pipe shapes not recognised", unknown_shape,
                          fix="Treat them as circular pipes of the given size"))
     return dict(nodes=nodes, links=links, crs=sorted(c for c in crs if c is not None), any_crs_missing=None in crs), iss
+
+
+def _yes(v):
+    return str(v or "").strip().lower() in ("yes", "y", "true", "1", "t", "flap", "nrv", "fitted", "present")
+
+
+def _gis_structures(layers, mapping, nodes, links, crs, dup_n, dup_l):
+    """Weirs, flow controls and pumps (line layers between manholes) and storage tanks (points or polygons). Each
+    needs its hydraulic values: a missing crest, size, rate or switch level stops the import."""
+    iss, need = [], defaultdict(list)
+    sl, sf = mapping.get("struct_layers") or {}, mapping.get("struct_fields") or {}
+    def val(r, f, role): return _num(r.get(f[role])) if f.get(role) else None
+    def lid_of(r, f, k, pre):
+        v = r.get(f["link_id"]) if f.get("link_id") else None
+        return str(v) if v is not None else f"{pre}{k + 1}"
+    def add_link(lid, l):
+        if lid in links:
+            dup_l.append(lid); n_ = 2
+            while f"{lid}_{n_}" in links: n_ += 1
+            lid = f"{lid}_{n_}"
+        links[lid] = l
+    for kind in ("weir", "orifice", "pump"):
+        lay = layers.get(sl.get(kind)); f = sf.get(kind) or {}
+        if not lay: continue
+        crs.add(lay["epsg"])
+        for k, r in enumerate(lay["rows"]):
+            g = r["geom"]
+            if g is None or g.is_empty: continue
+            if g.geom_type == "MultiLineString": g = max(g.geoms, key=lambda s_: s_.length)
+            lid = lid_of(r, f, k, kind[0].upper())
+            base = dict(type=kind, us=str(r.get(f["us_node"])) if f.get("us_node") and r.get(f["us_node"]) is not None else None,
+                        ds=str(r.get(f["ds_node"])) if f.get("ds_node") and r.get(f["ds_node"]) is not None else None,
+                        ends=[tuple(g.coords[0][:2]), tuple(g.coords[-1][:2])], geom_len=g.length, xs=None, curve=None)
+            if kind == "weir":
+                crest, width = val(r, f, "crest"), val(r, f, "width")
+                if crest is None: need["weir crest level"].append(lid)
+                if not width: need["weir width (crest length)"].append(lid)
+                base.update(crest=crest, width=width, height=val(r, f, "height"), cd=val(r, f, "cd"),
+                            gated=_yes(r.get(f["flap"])) if f.get("flap") else False)
+            elif kind == "orifice":
+                inv, dia, w, h = val(r, f, "invert"), val(r, f, "diameter"), val(r, f, "width"), val(r, f, "height")
+                q, hd = val(r, f, "design_flow"), val(r, f, "design_head")
+                if inv is None: need["flow control invert level"].append(lid)
+                if not (dia or (w and h) or (q and hd)): need["flow control size (diameter, width and height, or design flow and head)"].append(lid)
+                base.update(crest=inv, dia=dia, w=w, h=h, q=q, hd=hd, cd=val(r, f, "cd"),
+                            gated=_yes(r.get(f["flap"])) if f.get("flap") else False)
+            else:
+                rate, on, off = val(r, f, "rate"), val(r, f, "switch_on"), val(r, f, "switch_off")
+                if not rate: need["pump rate"].append(lid)
+                if on is None or off is None: need["pump switch-on and switch-off levels"].append(lid)
+                base.update(rate=rate, on=on, off=off)
+            add_link(lid, base)
+    lay = layers.get(sl.get("storage")); f = sf.get("storage") or {}
+    if lay:
+        crs.add(lay["epsg"])
+        for k, r in enumerate(lay["rows"]):
+            g = r["geom"]
+            if g is None or g.is_empty: continue
+            nid = str(r.get(f["node_id"])) if f.get("node_id") and r.get(f["node_id"]) is not None else f"T{k + 1}"
+            pt = g if g.geom_type == "Point" else g.centroid
+            floor, depth, area, vol = val(r, f, "floor"), val(r, f, "depth"), val(r, f, "area"), val(r, f, "volume")
+            if not area and g.geom_type in ("Polygon", "MultiPolygon"): area = g.area
+            if not area and vol and depth: area = vol / depth
+            if floor is None: need["storage floor level"].append(nid)
+            if not depth: need["storage depth"].append(nid)
+            if not area: need["storage plan area (or volume, or a polygon)"].append(nid)
+            if nid in nodes: dup_n.append(nid)
+            nodes[nid] = dict(x=pt.x, y=pt.y, kind="storage", invert=floor, cover=None, depth=depth, cover_type="sealed",
+                              storage=[f"{floor if floor is not None else 0:.3f}", f"{depth or 1:.3f}", "0", "FUNCTIONAL", "0", "0",
+                                       f"{area or 1:.3f}", "0", "0"], plan_area=area)
+    if need:
+        iss.append(issue("E_STRUCT_DATA", "error", "Structures missing values the model needs",
+                         [f"{what}: {', '.join(ids[:6])}{' …' if len(ids) > 6 else ''}" for what, ids in need.items()],
+                         "Crest levels, sizes, pump rates and switch levels can't be estimated without changing the "
+                         "results. Fill them in the source data."))
+    return iss
+
+
+def _finish_gis_structures(net, add):
+    """After levels are known: SWMM settings for GIS structures. Returns False if a declined repair stops the import."""
+    nodes, links = net["nodes"], net["links"]
+    S = {k: l for k, l in links.items() if l.get("type") in ("weir", "orifice", "pump") and "params" not in l}
+    if not S:
+        return True
+    nocd = [k for k, l in S.items() if l["type"] in ("weir", "orifice") and not l.get("cd")]
+    if nocd:
+        if not add(issue("F_STRUCT_CD", "fix", "Weirs or flow controls without a discharge coefficient", nocd,
+                         fix="Use 1.84 for weirs (SWMM's sharp-crested value, SI units) and 0.6 for flow controls")):
+            return False
+        for k in nocd: S[k]["cd"] = 1.84 if S[k]["type"] == "weir" else 0.6
+    noh = [k for k, l in S.items() if l["type"] == "weir" and not l.get("height")]
+    if noh:
+        if not add(issue("F_WEIR_HEIGHT", "fix", "Weirs without an opening height", noh,
+                         fix="Use the height from the crest to the upstream manhole's cover (at least 0.3 m)")):
+            return False
+        for k in noh:
+            u = nodes.get(S[k]["us"], {}); top = u.get("cover") if u.get("cover") is not None else u.get("ground")
+            S[k]["height"] = max(0.3, (top - S[k]["crest"]) if top is not None and S[k]["crest"] is not None else 1.0)
+    rates = [l["rate"] for l in S.values() if l["type"] == "pump" and l.get("rate")]
+    if rates and np.median(rates) > 5:
+        if not add(issue("F_PUMP_LPS", "fix", "Pump rates look like litres per second", [f"median {np.median(rates):g}"],
+                         fix="Divide them by 1,000 to get m³/s")):
+            return False
+        for l in S.values():
+            if l["type"] == "pump" and l.get("rate"): l["rate"] /= 1000
+    asdepth = [k for k, l in S.items() if l["type"] == "pump" and nodes.get(l["us"], {}).get("invert") is not None
+               and max(l["on"], l["off"]) < nodes[l["us"]]["invert"] - 0.01]
+    if asdepth:
+        if not add(issue("F_PUMP_DEPTH", "fix", "Pump switch levels are below the wet well floor", asdepth,
+                         fix="Read them as depths above the wet well floor")):
+            return False
+        for k in asdepth:
+            S[k]["on"] += nodes[S[k]["us"]]["invert"]; S[k]["off"] += nodes[S[k]["us"]]["invert"]
+    bad = [k for k, l in S.items() if l["type"] == "pump" and l["off"] >= l["on"]]
+    if bad:
+        add(issue("E_PUMP_LEVELS", "error", "Pumps that switch off at or above their switch-on level", bad,
+                  "Correct the switch levels in the source data."))
+        return False
+    curves = net.setdefault("curves", {})
+    for k, l in S.items():
+        if l["type"] == "weir":
+            l["params"] = ["TRANSVERSE", "0", f"{l['cd']:g}", "YES" if l.get("gated") else "NO", "0", "0"]
+            l["xs"] = ["RECT_OPEN", f"{l['height']:.3f}", f"{l['width']:.3f}", "0", "0"]
+        elif l["type"] == "orifice":
+            if l.get("dia"): xs = ["CIRCULAR", f"{l['dia'] / (1000 if l['dia'] > 20 else 1):.4f}", "0", "0", "0"]
+            elif l.get("w") and l.get("h"): xs = ["RECT_CLOSED", f"{l['h']:.3f}", f"{l['w']:.3f}", "0", "0"]
+            else:                                                 # an equivalent orifice passing the design flow at its head
+                q = l["q"] / (1000 if l["q"] > 5 else 1)
+                a = q / (l["cd"] * math.sqrt(2 * 9.81 * l["hd"])); xs = ["CIRCULAR", f"{math.sqrt(4 * a / math.pi):.4f}", "0", "0", "0"]
+            l["params"] = ["SIDE", "0", f"{l['cd']:g}", "YES" if l.get("gated") else "NO"]; l["xs"] = xs
+        else:
+            inv = nodes[l["us"]]["invert"]; cname_ = f"PUMP_{k}"[:28]
+            curves[cname_] = [["PUMP2", "100", f"{l['rate']:.4f}"]]              # constant rate while switched on
+            l["curve"] = cname_; l["params"] = [cname_, "ON", f"{l['on'] - inv:.3f}", f"{l['off'] - inv:.3f}"]
+    return True
 
 
 # ------------------------------------------------------------------------------------------------ the area
@@ -615,6 +802,18 @@ def analyse(net, kind, ground, accepted, base_issues):
         else:
             return iss, net
 
+    # flap valves (GIS): on outfalls, or on the last pipe before one
+    for k, n in nodes.items():
+        if n.get("flap") and n["kind"] == "outfall": n["gated"] = True
+    inner = []
+    for lid, l in links.items():
+        if l.get("flap"):
+            if nodes[l["ds"]]["kind"] == "outfall": nodes[l["ds"]]["gated"] = True
+            else: inner.append(lid)
+    inner += [k for k, n in nodes.items() if n.get("flap") and n["kind"] != "outfall"]
+    if inner: add(issue("W_FLAP", "warn", "Flap valves inside the network not modelled", inner,
+                        "SWMM puts flap valves on outfalls, weirs and flow controls only; these are ignored."))
+
     # sizes
     sizes = [l["g1"] for l in _c(links).values() if l["g1"]]
     if sizes and np.median(sizes) > 20:
@@ -708,6 +907,16 @@ def analyse(net, kind, ground, accepted, base_issues):
                 nodes[e]["invert"] = min(l[k] for l in _c(links).values() for n_, k in ((l["us"], "us_inv"), (l["ds"], "ds_inv")) if n_ == e)
         else:
             return iss, net
+
+    # GIS structures: their SWMM settings, now that levels are known
+    if kind == "gis" and not _finish_gis_structures(net, add):
+        return iss, net
+    hi = [k for k, l in links.items() if l.get("type") == "weir" and l.get("crest") is not None
+          and (nodes[l["us"]].get("cover") if nodes[l["us"]].get("cover") is not None else nodes[l["us"]].get("ground") or 1e9) < l["crest"] - 0.5]
+    if hi:
+        add(issue("E_WEIR_LEVEL", "error", "Weir crests above the ground", hi,
+                  "The crest is more than 0.5 m above the upstream manhole's cover. Check the levels in the source data."))
+        return iss, net
 
     # roughness
     rs = [l["n"] for l in _c(links).values() if l["n"] is not None]

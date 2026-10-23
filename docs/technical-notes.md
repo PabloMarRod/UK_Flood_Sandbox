@@ -466,9 +466,12 @@ names) and can be changed. Levels must be in metres above Ordnance Datum.
 
 Every file is checked before anything is imported. Each issue is one of:
 
-- **error**: the import stops and the data must be corrected at source. Examples: flow dividers in a SWMM file
-  (not supported yet); storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
-  weirs or orifices without a cross-section, or whose level can't be worked out; repeated manhole IDs; pipes naming manholes that don't
+- **error**: the import stops and the data must be corrected at source. Examples: custom or irregular
+  cross-sections; storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
+  weirs or orifices without a cross-section, or whose level can't be worked out; GIS structures missing a value
+  the model needs (crest level or length, flow-control level or size, pump rate or switch levels, tank floor level,
+  depth or area); pumps switching off at or above their switch-on level; weir crests more than 0.5 m above the
+  upstream cover; repeated manhole IDs; pipes naming manholes that don't
   exist; no coordinate system placing the network on the area; levels more than 2 m from the LiDAR ground on
   average (wrong datum or units); pipe tops above the cover; more than 25% of pipe sizes or 50% of manhole levels
   missing.
@@ -483,7 +486,8 @@ Every file is checked before anything is imported. Each issue is one of:
   outfall one at its lowest end manhole; cover types not recognised use the scenario default; chamber areas outside
   0.2 to 30 m2 use the default.
 - **warn**: imported as it is and noted (weirs, orifices, outlets, pumps and storage units imported from a SWMM
-  file; tidal or time-series outfalls treated as free; SWMM junctions with a surcharge depth read as sealed, chamber sizes read
+  file; flow dividers imported as junctions; flap valves inside the network (not modelled); tidal or time-series
+  outfalls treated as free; SWMM junctions with a surcharge depth read as sealed, chamber sizes read
   as millimetres, covers more than 0.5 m from LiDAR, pipes falling uphill, pipes under 2 m,
   stated and drawn lengths differing by more than 20%, manholes deeper than 10 m).
 
@@ -514,7 +518,21 @@ their settings from the source model: crest heights are converted to elevations,
 TABULAR storage curves are carried over (renamed), and pumps run on their curves with their start-up and shut-off
 depths (control rules aren't imported). Storage units connect to the surface only through the network. Outfalls
 keep their flap gates and fixed stages; tidal and time-series outfalls become free, as inside the area the river
-and tide come from the 2D model. GIS imports carry pipes and manholes only.
+and tide come from the 2D model. Flow dividers become junctions: the model routes flow by dynamic wave, under which
+SWMM treats a divider as a plain junction anyway.
+
+GIS imports can add structures as further layers, mapped field by field like pipes (InfoWorks-style names are
+recognised): weirs and flow controls (orifices, vortex controls) and pumps as lines between two nodes, joined by ID
+or by snapping their ends like pipes, and storage tanks as points or polygons. Required values: a weir's crest level
+and crest length; a flow control's invert level and either a diameter, a width and height, or a design flow and
+design head (converted to the orifice that passes that flow at that head); a pump's rate and its switch-on and
+switch-off levels; a tank's floor level, depth and plan area (or its volume, or the polygon's area). A missing
+required value stops the import, because estimating it would change the results. Repairs are offered only for:
+discharge coefficients (1.84 for weirs, SWMM's sharp-crested value in SI units, and 0.6 for flow controls); a
+weir's opening height (crest to the upstream cover); pump rates in litres per second; and switch levels given as
+depths above the wet well floor. Pumps deliver a constant rate between their switch levels. Flap valves can be a
+yes/no field on outfalls, pipes, weirs and flow controls; on a pipe into an outfall they gate the outfall, and
+elsewhere in a pipe network they are not modelled (SWMM has no flap on conduits) and are listed.
 
 Check (the test network plus a CSO weir to an overflow outfall, an orifice, and a 30 m2 tank emptied by a pump;
 120 mm in 30 minutes, 300 l/s gullies): the weir spilled 259 m3 to the overflow, the tank filled to 98% while the

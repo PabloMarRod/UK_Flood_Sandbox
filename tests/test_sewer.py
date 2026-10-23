@@ -1,5 +1,5 @@
 """Drainage network import: every check that stops an import, every in-house fix, and a coupled run."""
-import copy, json, shutil, subprocess, sys
+import copy, json, math, shutil, subprocess, sys
 from pathlib import Path
 import numpy as np
 import pytest
@@ -97,8 +97,8 @@ def test_messy_gis_is_repaired_only_with_consent(A, tmp_path):
 
 def _mutate(kind):
     nodes, pipes = copy.deepcopy(NET["nodes"]), copy.deepcopy(NET["pipes"]); extra = ""
-    if kind == "E_UNSUPPORTED":
-        extra = "[DIVIDERS]\nD1 30 a CUTOFF 0.5\n"
+    if kind == "E_SHAPE":
+        extra = "SHAPE"
     elif kind == "E_DATUM":
         for n in nodes:
             n["cover"] = (n["cover"] or 0) + 40; n["invert"] += 40
@@ -114,10 +114,13 @@ def _mutate(kind):
     return nodes, pipes, extra
 
 
-@pytest.mark.parametrize("kind", ["E_UNSUPPORTED", "E_DATUM", "E_UNKNOWN_NODE", "E_DUP_NODE", "E_OUTSIDE", "E_ABOVE"])
+@pytest.mark.parametrize("kind", ["E_SHAPE", "E_DATUM", "E_UNKNOWN_NODE", "E_DUP_NODE", "E_OUTSIDE", "E_ABOVE"])
 def test_blocking_errors_stop_the_import(A, tmp_path, kind):
     nodes, pipes, extra = _mutate(kind)
-    r = run_check(A, write_inp(tmp_path / "n.inp", nodes, pipes, extra), tmp_path, all_fixes=True)
+    f = write_inp(tmp_path / "n.inp", nodes, pipes, "" if extra == "SHAPE" else extra)
+    if extra == "SHAPE":                                                      # a custom cross-section
+        f.write_text(f.read_text().replace(" CIRCULAR ", " CUSTOM ", 1))
+    r = run_check(A, f, tmp_path, all_fixes=True)
     assert r["status"] == "blocked" and kind in codes(r, "error"), codes(r)
     assert r["network"] is None
 
@@ -293,3 +296,112 @@ def test_structures_run(A, tmp_path, monkeypatch):
     flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
              if l.strip().startswith(("S_CSO1", "S_PMP1", "S_OR1"))}
     assert set(flows) == {"S_CSO1", "S_PMP1", "S_OR1"}
+
+
+def test_swmm_dividers_become_junctions(A, tmp_path):
+    lines = write_inp(tmp_path / "n.inp", NET["nodes"], NET["pipes"]).read_text().split("\n")
+    k = lines.index("[JUNCTIONS]") + 1
+    p = lines.pop(k).split()                                                  # turn the first manhole into a divider
+    lines.append(f"[DIVIDERS]\n{p[0]} {p[1]} {NET['pipes'][0]['id']} CUTOFF 0.05 {p[2]} 0 0 0")
+    (tmp_path / "n.inp").write_text("\n".join(lines))
+    r = run_check(A, tmp_path / "n.inp", tmp_path, all_fixes=True)
+    assert r["status"] == "ok" and "W_DIVIDER" in codes(r, "warn")
+    assert r["network"]["nodes"][p[0]]["kind"] == "junction"
+
+
+def gis_structures(path, drop=None, pump_as_depths=False):
+    """The test network as GIS layers (InfoWorks-style names) plus a CSO weir to an overflow outfall, a flow control
+    given by design flow and head, a pump from a storage tank (a polygon), and a flap valve on the outfall pipe."""
+    import pyogrio
+    from shapely.geometry import Polygon
+    nodes, pipes = copy.deepcopy(NET["nodes"]), copy.deepcopy(NET["pipes"])
+    by = {n["id"]: n for n in nodes}
+    out = next(n for n in nodes if n["type"] == "outfall")
+    cso = next(n for n in nodes if n["type"] == "manhole" and n["cover"] - n["invert"] > 1.2 and
+               ((n["x"] - out["x"]) ** 2 + (n["y"] - out["y"]) ** 2) ** .5 < 120)
+    a, b = by[pipes[3]["us"]], by[pipes[3]["ds"]]
+    tk_mh = by[pipes[6]["us"]]
+    tk = dict(id="TK1", x=tk_mh["x"] + 6, y=tk_mh["y"] + 6, floor=tk_mh["invert"] - 1.5)
+    nodes.append(dict(id="OVF1", x=out["x"] + 6, y=out["y"] + 6, cover=None, invert=out["invert"] + 0.2, type="outfall"))
+    pipes.append(dict(id="PTK", us=tk_mh["id"], ds="TK1", x0=tk_mh["x"], y0=tk_mh["y"], x1=tk["x"], y1=tk["y"], size=0.225,
+                      us_inv=tk_mh["invert"], ds_inv=tk["floor"], length=8.5))
+    write_gpkg(path, nodes, pipes)
+    flap = np.array(["Yes" if p["ds"] == out["id"] else "No" for p in pipes])           # flap on pipes into the outfall
+    meta = pyogrio.read_info(str(path), layer="pipes")
+    _, _, geom, fields = pyogrio.raw.read(str(path), layer="pipes")
+    pyogrio.raw.write(str(path), geom, list(fields) + [flap], fields=list(meta["fields"]) + ["flap_valve"], layer="pipes",
+                      driver="GPKG", crs="EPSG:27700", geometry_type="LineString")
+    def line(layer, rows, names):
+        g = np.array([shapely.to_wkb(LineString(r.pop("geom"))) for r in rows], dtype=object)
+        cols = [np.array([r.get(n) for r in rows], dtype=object if isinstance(rows[0].get(n), str) else float) for n in names]
+        pyogrio.raw.write(str(path), g, cols, fields=names, layer=layer, driver="GPKG", crs="EPSG:27700",
+                          geometry_type="LineString", append=True)
+    weir = dict(geom=[(cso["x"], cso["y"]), (out["x"] + 6, out["y"] + 6)], link_id="CSO1", us_node_id=cso["id"],
+                ds_node_id="OVF1", crest=cso["invert"] + 0.35, width=1.0)
+    ctrl = dict(geom=[(a["x"], a["y"]), (b["x"], b["y"])], link_id="HB1", us_node_id=a["id"], ds_node_id=b["id"],
+                invert_level=a["invert"] + 0.1, design_flow=30.0, design_head=1.5)          # l/s
+    on, off = tk["floor"] + 1.0, tk["floor"] + 0.3
+    pump = dict(geom=[(tk["x"], tk["y"]), (tk_mh["x"] + 1, tk_mh["y"])], link_id="PMP1", us_node_id="TK1",
+                ds_node_id=tk_mh["id"], discharge=20.0, switch_on_level=1.0 if pump_as_depths else on,
+                switch_off_level=0.3 if pump_as_depths else off)                          # l/s
+    for r, k in ((weir, "crest"), (weir, "width"), (pump, "discharge"), (pump, "switch_on_level")):
+        if drop == k and k in r: r[k] = np.nan
+    line("weirs", [weir], ["link_id", "us_node_id", "ds_node_id", "crest", "width"])
+    line("flow_controls", [ctrl], ["link_id", "us_node_id", "ds_node_id", "invert_level", "design_flow", "design_head"])
+    line("pumps", [pump], ["link_id", "us_node_id", "ds_node_id", "discharge", "switch_on_level", "switch_off_level"])
+    poly = Polygon([(tk["x"] - 3, tk["y"] - 2.5), (tk["x"] + 3, tk["y"] - 2.5), (tk["x"] + 3, tk["y"] + 2.5), (tk["x"] - 3, tk["y"] + 2.5)])
+    pyogrio.raw.write(str(path), np.array([shapely.to_wkb(poly)], dtype=object),
+                      [np.array(["TK1"], dtype=object), np.array([tk["floor"]]), np.array([2.5])],
+                      fields=["node_id", "floor_level", "depth"], layer="storage_tanks", driver="GPKG", crs="EPSG:27700",
+                      geometry_type="Polygon", append=True)
+    return path, cso["id"], out["id"]
+
+
+def test_gis_structures_import(A, tmp_path):
+    f, cso, out = gis_structures(tmp_path / "s.gpkg")
+    ins = sewer.inspect(f, tmp_path / "x")
+    assert set(ins["mapping"]["struct_layers"]) == {"weir", "orifice", "pump", "storage"}
+    r = run_check(A, f, tmp_path)
+    assert {"F_STRUCT_CD", "F_WEIR_HEIGHT", "F_PUMP_LPS"} <= codes(r, "fix") and not codes(r, "error"), codes(r)
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "ok"
+    net = r["network"]
+    assert net["links"]["CSO1"]["type"] == "weir" and net["links"]["CSO1"]["xs"][0] == "RECT_OPEN"
+    hb = net["links"]["HB1"]; d = float(hb["xs"][1])
+    assert hb["type"] == "orifice" and abs(0.6 * math.pi * d * d / 4 * math.sqrt(2 * 9.81 * 1.5) - 0.030) < 0.001
+    assert net["nodes"]["TK1"]["kind"] == "storage" and abs(net["nodes"]["TK1"]["plan_area"] - 30) < 0.01
+    p = net["links"]["PMP1"]; assert p["type"] == "pump" and float(p["params"][2]) == pytest.approx(1.0, abs=0.01)
+    assert net["nodes"][out]["gated"]
+
+
+@pytest.mark.parametrize("drop", ["crest", "width", "discharge", "switch_on_level"])
+def test_gis_structure_without_hydraulic_values_blocks(A, tmp_path, drop):
+    f, _, _ = gis_structures(tmp_path / "s.gpkg", drop=drop)
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_STRUCT_DATA" in codes(r, "error")
+
+
+def test_pump_levels_given_as_depths_are_offered_a_repair(A, tmp_path):
+    f, _, _ = gis_structures(tmp_path / "s.gpkg", pump_as_depths=True)
+    r = run_check(A, f, tmp_path)
+    assert "F_PUMP_DEPTH" in codes(r, "fix")
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "ok" and float(r["network"]["links"]["PMP1"]["params"][2]) == pytest.approx(1.0, abs=0.01)
+
+
+@pytest.mark.engine
+def test_gis_structures_run(A, tmp_path, monkeypatch):
+    f, cso, out = gis_structures(tmp_path / "s.gpkg")
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, run_check(A2, f, tmp_path, all_fixes=True), "s.gpkg")
+    q, _ = core.validate(A2, dict(depth=100, duration=30, sim=0.75, sewer=True, sewer_gully_lps=150))
+    run = tmp_path / "run"; run.mkdir(); monkeypatch.chdir(run)
+    core.write_inp(A2, q, run / "model.inp", "model.h5")
+    import openswmm.engine as eng
+    eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), lambda frac: None)
+    rpt = (run / "model.rpt").read_text()
+    errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
+    assert errs and max(abs(e) for e in errs) < 0.5
+    flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
+             if l.strip().startswith(("S_CSO1", "S_PMP1", "S_HB1"))}
+    assert set(flows) == {"S_CSO1", "S_PMP1", "S_HB1"} and flows["S_HB1"] <= 0.035

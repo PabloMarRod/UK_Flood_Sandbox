@@ -1611,10 +1611,21 @@ $('showResults').onclick = () => R && showResults(R);
 let SEWER = null, sewerLayer = null, SWINS = null, SWREP = null;
 const SWROLES = {
   node: [['node_id','Manhole ID *'],['cover','Cover level'],['invert','Invert level'],['depth','Depth'],['node_type','Type (finds outfalls)'],
-         ['cover_type','Cover type (solid, grated, sealed)'],['chamber_area','Chamber area (m²)'],['chamber_size','Chamber diameter or width']],
+         ['cover_type','Cover type (solid, grated, sealed)'],['chamber_area','Chamber area (m²)'],['chamber_size','Chamber diameter or width'],
+         ['flap','Flap valve (outfalls)']],
   link: [['link_id','Pipe ID'],['us_node','Upstream manhole'],['ds_node','Downstream manhole'],['size','Size (diameter or width) *'],
          ['height','Height'],['shape','Shape'],['us_invert','Upstream invert'],['ds_invert','Downstream invert'],['length','Length'],
-         ['rough',"Roughness (Manning's n)"]]};
+         ['rough',"Roughness (Manning's n)"],['flap','Flap valve']],
+  weir: [['link_id','Weir ID'],['us_node','Upstream manhole'],['ds_node','Downstream node'],['crest','Crest level *'],
+         ['width','Crest length *'],['height','Opening height'],['cd','Discharge coefficient'],['flap','Flap valve']],
+  orifice: [['link_id','Control ID'],['us_node','Upstream manhole'],['ds_node','Downstream node'],['invert','Invert level *'],
+         ['diameter','Diameter'],['width','Width'],['height','Height'],['cd','Discharge coefficient'],
+         ['design_flow','Design flow'],['design_head','Design head'],['flap','Flap valve']],
+  pump: [['link_id','Pump ID'],['us_node','Wet well (upstream node)'],['ds_node','Delivery node'],['rate','Pump rate *'],
+         ['switch_on','Switch-on level *'],['switch_off','Switch-off level *']],
+  storage: [['node_id','Tank ID'],['floor','Floor level *'],['depth','Depth *'],['area','Plan area'],['volume','Volume']]};
+const SWKINDS = [['weir','Weirs (lines)'],['orifice','Flow controls: orifices, vortex controls (lines)'],['pump','Pumps (lines)'],
+  ['storage','Storage tanks (points or polygons)']];
 async function loadSewer(id){
   if(sewerLayer){ sewerLayer.remove(); sewerLayer = null; }
   SEWER = null;
@@ -1678,10 +1689,24 @@ function buildMapping(d){
     return `<div class="swh">${title}</div><div class="swgrid"><span>Layer</span><select data-layer="${layerKey}">${opt(layers, ln)}</select>` +
       SWROLES[kind].map(([r, lbl]) => `<span>${lbl}</span><select data-f="${fKey}" data-r="${r}">${opt(fields(ln), (m[fKey]||{})[r])}</select>`).join('') + '</div>';
   };
+  m.struct_layers = m.struct_layers || {}; m.struct_fields = m.struct_fields || {};
+  const sblock = (kind, title) => {
+    const ln = m.struct_layers[kind], f = m.struct_fields[kind] || {};
+    const pool = d.layers.filter(l => kind === 'storage' ? l.kind !== 'line' : l.kind === 'line').map(l => l.name);
+    return `<div class="swh">${title}</div><div class="swgrid"><span>Layer</span><select data-sl="${kind}">${opt(pool, ln)}</select>` +
+      (ln ? SWROLES[kind].map(([r, lbl]) => `<span>${lbl}</span><select data-sf="${kind}" data-r="${r}">${opt(fields(ln), f[r])}</select>`).join('') : '') + '</div>';
+  };
+  const anyS = Object.values(m.struct_layers).some(Boolean);
   $('sewMapping').innerHTML = block('node', 'Manholes (points)', 'node_layer', 'node_fields', lay('point')) +
     block('link', 'Pipes (lines)', 'link_layer', 'link_fields', lay('line')) +
+    `<details${anyS ? ' open' : ''} style="margin:4px 0 8px"><summary style="font-size:13px;font-weight:600;cursor:pointer">Structures (optional)</summary>` +
+    SWKINDS.map(([k, t]) => sblock(k, t)).join('') +
+    '<div class="hint" style="font-size:12px;color:var(--muted)">Fields marked * are required: a structure without them stops the import. Levels in metres above Ordnance Datum.</div></details>' +
     '<div class="hint" style="font-size:12px;color:var(--muted);margin-bottom:8px">Fields were matched by name; check them. Without upstream and downstream fields, pipe ends are joined to the nearest manhole.</div>';
   $('sewMapping').hidden = false;
+  $('sewMapping').querySelectorAll('select[data-sl]').forEach(sel => sel.onchange = () => {
+    m.struct_layers[sel.dataset.sl] = sel.value || null; m.struct_fields[sel.dataset.sl] = {};
+    buildMapping(d); });
   $('sewMapping').querySelectorAll('select[data-layer]').forEach(sel => sel.onchange = () => {
     m[sel.dataset.layer] = sel.value; const fk = sel.dataset.layer === 'node_layer' ? 'node_fields' : 'link_fields'; m[fk] = {}; buildMapping(d); });
 }
@@ -1690,6 +1715,9 @@ function readMapping(){
   const m = {node_fields:{}, link_fields:{}};
   $('sewMapping').querySelectorAll('select[data-layer]').forEach(s => m[s.dataset.layer] = s.value || null);
   $('sewMapping').querySelectorAll('select[data-f]').forEach(s => { if(s.value) m[s.dataset.f][s.dataset.r] = s.value; });
+  m.struct_layers = {}; m.struct_fields = {};
+  $('sewMapping').querySelectorAll('select[data-sl]').forEach(s => { if(s.value){ m.struct_layers[s.dataset.sl] = s.value; m.struct_fields[s.dataset.sl] = {}; } });
+  $('sewMapping').querySelectorAll('select[data-sf]').forEach(s => { if(s.value && m.struct_fields[s.dataset.sf]) m.struct_fields[s.dataset.sf][s.dataset.r] = s.value; });
   return m;
 }
 $('sewCheck').onclick = () => runCheck();
