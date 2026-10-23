@@ -247,9 +247,14 @@ def build_scene(A, status=lambda m: None):
     # ---- defences and river points
     defs = []
     try:
+        from shapely.geometry import Polygon
+        clip = Polygon(A["poly_bng"]).buffer(H)                 # draw only the part on the area (a wall may run far beyond it)
         dl, _ = areas._defence_lines(A)
         for x in dl:
-            for part in getattr(x["geom"], "geoms", [x["geom"]]):
+            g_ = x["geom"].intersection(clip)
+            if g_.is_empty: continue
+            for part in getattr(g_, "geoms", [g_]):
+                if part.geom_type != "LineString": continue
                 pts = [[round(px - X0, 1), round(Y1 - py, 1)] for px, py in part.coords]
                 if len(pts) >= 2: defs.append(dict(l=pts, z=round(x["crest"], 2), k=x["kind"]))
     except Exception:
@@ -264,7 +269,7 @@ def build_scene(A, status=lambda m: None):
                  keep=_b64(keep.astype(np.uint8)), inside=_b64(inside.astype(np.uint8)),
                  ground=ground, ground_res=r, ground_size=[tw, th], buildings=out_b, defences=defs,
                  inflows=inflows, exits=exits, measured_buildings=measured, total_buildings=len(out_b),
-                 trees=trees, tree_source=tree_source, version=2,
+                 trees=trees, tree_source=tree_source, version=3,
                  zmin=float(np.nanmin(heights)), zmax=float(np.nanmax(heights)),
                  outline=[loc(x, y) for x, y in A["poly_bng"]])
     (d / "cache" / "scene.json").write_text(json.dumps(scene))

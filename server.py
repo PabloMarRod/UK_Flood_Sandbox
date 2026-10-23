@@ -194,8 +194,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._send(404, {"error": str(e)})
             f = Path(A["dir"]) / "cache" / "scene.json"
-            if f.exists() and b'"version": 2' not in f.read_bytes()[-400:] and b'"trees"' not in f.read_bytes():
-                f.unlink()                       # scenes from before trees were added are rebuilt once
+            if f.exists() and b'"version": 3' not in f.read_bytes()[-400:]:
+                f.unlink()                       # older scenes (before trees; unclipped defences) are rebuilt once
             if not f.exists():
                 with SCENE_LOCK:
                     if not f.exists(): scene.build_scene(A)

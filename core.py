@@ -21,7 +21,7 @@ DEFAULT_K = 4.5e-4                # seconds per cell per simulated hour (single 
 LIMITS = dict(depth=(0, 200), duration=(5, 360), sim=(0.5, 8.0), base_q=(0, 30), factor=(0.1, 3.0), uplift=(0, 100),
               wave_base=(0, 30), wave_peak=(0, 80), wave_start=(0, 480), wave_rise=(5, 480), wave_fall=(5, 960),
               burst_q=(0.01, 5), burst_start=(0, 480), burst_dur=(1, 480), blockage=(0, 95))
-RIVER_LIMIT = 300.0               # m3/s, per detected inflow in drawn areas
+RIVER_LIMIT = 3000.0              # m3/s, per detected inflow in drawn areas (above the largest UK river floods)
 TIDE_LIMITS = dict(tide_hw=(-3, 12), tide_lw=(-8, 5), tide_hw_time=(0, 1440), surge_peak=(0, 3), surge_time=(0, 1440),
                    surge_dur=(30, 2880), slr=(0, 2), river_base=(0, 5000), river_peak=(0, 8000))
 PROFILES = ("uniform", "front", "centre", "late", "obs2012")

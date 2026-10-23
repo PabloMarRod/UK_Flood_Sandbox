@@ -514,6 +514,18 @@ def build_mesh(A):
         inflows = []
         for n_, (p, name, kind) in enumerate(ins_, 1):
             cells = [c for c in rim_cells if near(*c, p, r_in)]
+            # spread a river across its channel where it crosses the edge, so large flows enter over the bed's full
+            # width rather than through one or two cells: grow along the rim through channel cells
+            grown = set(cells)
+            if cells:
+                zbed = min(float(np.nanmin(vz[j:j + 2, i:i + 2])) for j, i in cells)
+                low = lambda c: float(np.nanmin(vz[c[0]:c[0] + 2, c[1]:c[1] + 2])) <= zbed + 1.5
+                while True:
+                    more = {c for c in rim_cells if c not in grown and near(*c, p, 60) and (TT[first[c]] == "chan" or low(c))
+                            and any(abs(c[0] - g[0]) <= 1 and abs(c[1] - g[1]) <= 1 for g in grown)}
+                    if not more: break
+                    grown |= more
+            cells = sorted(grown)
             if not cells:
                 cand = sorted(rim_cells, key=lambda c: math.hypot(cx(*c)[0] - p[0], cx(*c)[1] - p[1]))[:1]
                 cells = [c for c in cand if near(*c, p, 3 * H)]
@@ -527,7 +539,7 @@ def build_mesh(A):
                 zs.append(np.nanmin(vz[j:j + 2, i:i + 2]))
             jx, ix = cells[0]
             inflows.append(dict(id=tagname, name=name, kind=kind, x=p[0], y=p[1], z=float(min(zs)),
-                                cell=[int(jx), int(ix)], n_cells=len(cells)))
+                                cell=[int(jx), int(ix)], n_cells=len(cells), cells=[[int(a), int(b)] for a, b in cells]))
         tyne_edges = []
         if is_tyne.any():
             import estuary
@@ -541,7 +553,8 @@ def build_mesh(A):
             rim = rest
         out = []
         for j, i, k, edge, zc, zo in rim:
-            if any(near(j, i, (f["x"], f["y"]), r_block) for f in inflows):
+            if any(near(j, i, (f["x"], f["y"]), r_block) or
+                   any(abs(j - a) <= 2 and abs(i - b) <= 2 for a, b in f.get("cells", ())) for f in inflows):
                 continue          # never let injected river water straight back out
             forced = any(near(j, i, p, r_out) for p, _, _ in exits)
             if np.isfinite(zo) and (zo < zc or forced):
