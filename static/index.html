@@ -431,11 +431,11 @@ label.chk.big{font-size:14px;color:var(--ink)}
           <span>Door barriers</span>
           <span class="inline"><input class="num" type="number" name="bld_barrier" min="0" max="2" step="0.05" value="0" style="width:80px" aria-label="Barrier height in metres"><span class="unit">m high (0: none)</span></span>
           <span>Windows</span>
-          <select name="bld_windows"><option value="watertight" selected>Watertight</option><option value="break">Break at a height I set</option></select>
+          <select name="bld_windows"><option value="watertight" selected>Don't break (they leak slightly above the sill)</option><option value="break">Break at a height I set</option></select>
           <span>A window breaks at</span>
           <span class="inline"><input class="num" type="number" name="bld_window_break" min="0" max="3" step="0.05" value="" placeholder="not set" style="width:80px" aria-label="Breaking height in metres"><span class="unit">m above the sill</span></span>
         </div>
-        <div class="hint">Water reaches the inside of each IFC building through its outside doors and windows, and spreads through internal doors. Door leakage follows University of Hull laboratory tests of six UK external doors (2026): it rises with depth, from about 1,000 L/h per metre of width at 0.2 m to about 4,000 at 0.6 m, varying widely between doors. No domestic door gave way up to 0.6 m in those tests; non-domestic doors elsewhere have failed between about 0.7 and 2 m. No data were found for windows leaking or breaking, so they are watertight unless you set a breaking height. Barriers are treated as watertight up to their top; in practice they depend on fit and installation.</div>
+        <div class="hint">Water reaches the inside of each IFC building through its outside doors and windows, and spreads through internal doors. Door leakage follows University of Hull laboratory tests of six UK external doors (2026): it rises with depth, from about 1,000 L/h per metre of width at 0.2 m to about 4,000 at 0.6 m, varying widely between doors. No domestic door gave way up to 0.6 m in those tests. For glazed doors, Kelman (2002) found double-glazed door panels likely to break once the water outside is about 1.5 m above the floor; try 1.5 m. He also found window glass too small and too high to break in floods, and windows leaking about a tenth as fast as doors, which is how they are modelled. Barriers are treated as watertight up to their top; in practice they depend on fit and installation.</div>
       </div>
       <div class="field" id="sewerField" hidden>
         <span class="lbl">Drainage network</span>
@@ -1990,7 +1990,9 @@ function bldHtml(r){
   return `<div class="bhead"><b>${esc(r.name)}</b><button class="linkbtn" data-focus="${k}">Show in 3D</button></div>
     <div style="font-size:13.5px;margin-bottom:6px">${verdict}</div>
     <table class="rtable"><tr><td>Finished floor level</td><td>${fmtM(r.ffl)} AOD</td></tr><tr><td>Highest water against the walls</td><td>${fmtM(r.around.peak_level)} AOD</td></tr>
-    <tr><td>Above the floor level for</td><td>${r.ffl_exceeded ? min(r.ffl_minutes) : '–'}</td></tr></table>${chart}${doors}${spaces}
+    <tr><td>Above the floor level for</td><td>${r.ffl_exceeded ? min(r.ffl_minutes) : '–'}</td></tr>
+    ${r.walls ? `<tr><td>Most water outside above water inside</td><td style="color:${r.walls.max_diff > r.walls.onset ? '#b3261e' : 'inherit'}">${fmtM(r.walls.max_diff)}</td></tr>` : ''}</table>
+    ${r.walls && r.walls.max_diff > r.walls.onset ? `<div class="msg ${r.walls.max_diff > r.walls.most ? 'err' : 'warn'}" style="margin-top:6px">The water outside rose ${fmtM(r.walls.max_diff)} above the water inside${r.walls.first_onset_min != null ? ` (beyond ${r.walls.onset} m from ${min(r.walls.first_onset_min)})` : ''}. Kelman (2002) found cavity walls of modern English homes start to fail at about ${r.walls.onset} m in still water and most have failed by ${r.walls.most} m. Wall failure isn't modelled; letting water in (no barriers) reduces the difference.</div>` : ''}${chart}${doors}${spaces}
     <div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(r.note)}</div>`;
 }
 let REPS_SEEN = []; function reps_index(r){ const i = IFCB.findIndex(b => b.id === r.id); return i < 0 ? 0 : i; }

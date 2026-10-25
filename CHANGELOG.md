@@ -18,8 +18,10 @@ All notable changes are recorded here. The project follows semantic versioning o
   Building tab: water at each door against its threshold and against the finished floor level, and the spaces at
   risk with indicative damage. Water inside is modelled room by room (or per storey): it gets in through outside
   doors (leaking when closed at rates measured in University of Hull tests of UK doors, over the full width when
-  open or once they give way at a set height, held back by door barriers) and windows (watertight unless set to
-  break at a height), spreads through internal doors and drains out again.
+  open or once they give way at a set height, held back by door barriers) and windows (leaking above the sill at a
+  tenth of the door rate, and breaking only at a height the user sets, after Kelman 2002), spreads through
+  internal doors and drains out again. The report flags when the water outside rises more than 0.8 m above the
+  water inside, where cavity walls may start to fail (Kelman 2002).
 - Rivers entering a drawn area can carry up to 3,000 m³/s (was 300), and enter across their channel's width at
   the edge (found from the LiDAR bed level) rather than through one or two cells.
 - Fixed: flood defences running beyond an area were drawn in full in the 3D view, as a long line off the edge.

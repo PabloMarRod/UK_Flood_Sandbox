@@ -452,8 +452,24 @@ def report(A, run_dir, bid):
                                series=v["series"], type=typ, damage_eur=round(frac * core.JRC_UK_MAX[typ] * v["area"])))
         note = ("Water inside is modelled through the doors and windows, with the opening settings of this scenario "
                 f"({inside['mode']}). Leakage and failure settings are assumptions.")
+    # difference between the water against the walls and the water inside (the floor if dry), against Kelman's thresholds
+    walls = None
+    if ffl is not None and np.isfinite(lv).any():
+        inside_lvl = np.full(len(t), ffl)
+        if inside:
+            ti = np.array(inside["times_min"], float)
+            for v in inside["spaces"].values():
+                if v.get("storey") is not None and v["floor"] > ffl + 0.5: continue        # ground floor only
+                ser = np.array(v["series"], float)
+                if len(ser) == len(ti) and len(ti):
+                    inside_lvl = np.maximum(inside_lvl, v["floor"] + np.interp(t, ti, ser))
+        diff = np.where(np.isfinite(lv), lv - inside_lvl, -np.inf)
+        md = float(np.max(diff))
+        walls = dict(max_diff=round(max(md, 0.0), 3), onset=WALL_ONSET, most=WALL_MOST,
+                     first_onset_min=first(diff > WALL_ONSET), first_most_min=first(diff > WALL_MOST))
     c = fp.centroid
     return dict(id=bid, name=b.get("name"), ffl=ffl, ground_min=b.get("ground_min"), times_min=[round(float(v)) for v in t],
+                walls=walls,
                 inside=dict(mode=inside["mode"], times_min=inside["times_min"], skipped=inside["skipped"]) if inside else None,
                 centre=[round(c.x, 2), round(c.y, 2)], local=[round(c.x - A["X0"], 1), round(A["Y1"] - c.y, 1)],
                 around=dict(peak_level=round(peak, 3) if peak is not None else None, peak_depth=round(float(np.max(dep)), 3),
@@ -492,6 +508,14 @@ def _inside(run_dir, bid):
 # doors for Flood Re, McLelland et al. 2026, doi:10.5281/zenodo.23220942). As a rate per metre of width per metre
 # of depth that is about 6,700 L/h; outward-opening doors leaked about 74% less on average (only two were tested).
 DOOR_LEAK = {"typical": 6700.0, "outward": 6700.0 * 0.26}     # L/h per m width per m depth
+# Windows: Kelman (2002, PhD, Cambridge) estimates water rising inside about ten times slower through a weather-
+# stripped window than through a door (orders of magnitude only; he later noted his air-to-water conversion needs
+# revising), and finds window glass too small and too high to break in floods. So windows leak above the sill at a
+# tenth of the door rate and don't break unless the user sets a height.
+WINDOW_LEAK_FACTOR = 0.1
+# Kelman (2002): with still water, cavity walls of modern English homes start failing when the water outside is about
+# 0.8 m above the ground floor (more than inside), and most have failed by 2.0 m.
+WALL_ONSET, WALL_MOST = 0.8, 2.0
 DOOR_HEIGHT = 2.1         # m, when the model has none
 
 
@@ -591,12 +615,11 @@ def model_lines(A, q, lines, cache, sidecar=None):
             out["coords"].append(f"{on} {o['x']:.2f} {o['y']:.2f}")
             # openings as outlets with a flow-head rule (no opening height to reach above the node), one each way
             c_full = 1.6 * w                                               # weir: Q = 1.6 * width * h^1.5
-            lk = lr = None
-            if o["is_door"]:                                               # closed doors leak in proportion to depth
-                c_leak = rate * w / 3.6e6                                  # m3/s per m of water above the threshold
-                lk, lr = f"IL{n}_{k}", f"IR{n}_{k}"
-                out["outlets"].append(f"{lk} {on} {inside} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
-                out["outlets"].append(f"{lr} {inside} {on} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
+            # closed doors and windows leak in proportion to the water above the crest
+            c_leak = rate * w / 3.6e6 * (1.0 if o["is_door"] else WINDOW_LEAK_FACTOR)   # m3/s per m above the crest
+            lk, lr = f"IL{n}_{k}", f"IR{n}_{k}"
+            out["outlets"].append(f"{lk} {on} {inside} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
+            out["outlets"].append(f"{lr} {inside} {on} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
             full = (o["is_door"] and (doors_mode == "open" or fail > 0)) or (not o["is_door"] and wmode == "break")
             wl = None
             if full:

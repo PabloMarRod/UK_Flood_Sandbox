@@ -113,7 +113,7 @@ def test_open_doors_let_water_in_and_barriers_keep_it_out(A, G, tmp_path, monkey
     f = make_house(tmp_path / "h.ifc", **SITE)
     bid = ib.save(A2, f, ib.check(f, A2, G), "Test house"); areas.build_mesh(A2)
     import openswmm.engine as eng
-    depth = {}
+    depth, walls = {}, {}
     for case, extra in (("open", dict(bld_doors="open")), ("barrier", dict(bld_doors="open", bld_barrier=0.6))):
         q, _ = core.validate(A2, dict(depth=80, duration=60, profile="centre", soil="wet", sim=1.25, **extra))
         run = tmp_path / case; run.mkdir(); monkeypatch.chdir(run)
@@ -125,8 +125,10 @@ def test_open_doors_let_water_in_and_barriers_keep_it_out(A, G, tmp_path, monkey
         core.postprocess(A2, str(run / "model.h5"), q, forcing, 1.0)
         r = ib.report(A2, run, bid)
         assert any(d["margin"] is not None and d["margin"] < 0 for d in r["doors"])   # water does rise above a threshold
-        depth[case] = max(s["max_depth"] for s in r["spaces"])
+        depth[case] = max(s["max_depth"] for s in r["spaces"]); walls[case] = r["walls"]
     assert depth["open"] > 0.05 and depth["barrier"] < 0.01
+    # with barriers the inside stays dry, so the difference across the walls is the full depth outside above the floor
+    assert walls["barrier"]["max_diff"] >= walls["open"]["max_diff"] - 0.01 and walls["barrier"]["max_diff"] < 0.8
 
 
 def test_door_leakage_follows_the_measured_rates_and_windows_stay_sealed(A, G, tmp_path):
@@ -139,12 +141,13 @@ def test_door_leakage_follows_the_measured_rates_and_windows_stay_sealed(A, G, t
         t = (tmp_path / "m.inp").read_text(); sec = t.split("[OUTLETS]")[1].split("[")[0]
         return [l.split() for l in sec.split("\n") if l.startswith("I")], warn
     o, _ = outlets()
-    leak = [l for l in o if l[0].startswith("IL")]
-    assert len(leak) == 2 and not any(l[0].startswith("IW") for l in o)              # two outside doors; windows sealed
-    # 0.9 m door: 6,700 L/h per m width per m depth, linear in depth (exponent 1)
-    assert all(abs(float(l[5]) - 6700 * 0.9 / 3.6e6) < 1e-6 and l[6] == "1.0" for l in leak)
+    leak = sorted(float(l[5]) for l in o if l[0].startswith("IL"))
+    assert len(leak) == 4 and not any(l[0].startswith("IW") for l in o)              # 2 doors, 2 windows; none break
+    assert all(l[6] == "1.0" for l in o if l[0].startswith("IL"))                    # linear in depth
+    # doors 0.9 m wide: 6,700 L/h per m width per m depth; windows 1.5 m wide at a tenth of that
+    assert abs(leak[-1] - 6700 * 0.9 / 3.6e6) < 1e-6 and abs(leak[0] - 0.1 * 6700 * 1.5 / 3.6e6) < 1e-7
     o, _ = outlets(bld_door_type="outward")
-    assert all(abs(float(l[5]) - 6700 * 0.26 * 0.9 / 3.6e6) < 1e-6 for l in o if l[0].startswith("IL"))
+    assert max(float(l[5]) for l in o if l[0].startswith("IL")) - 6700 * 0.26 * 0.9 / 3.6e6 < 1e-6
     o, warn = outlets(bld_windows="break")                                           # no height given
     assert not any(l[0].startswith("IW") for l in o) and any("treated as watertight" in w for w in warn)
     o, _ = outlets(bld_windows="break", bld_window_break=0.5)

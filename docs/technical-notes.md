@@ -608,16 +608,26 @@ passes water as a weir over its width. Giving way is a control rule (closed unti
 height above the threshold, then open, and open once water is inside); it is off by default, as no domestic door
 gave way up to 0.6 m in the Hull tests, and the only failure depths found are for non-domestic doors (hollow-core
 doors at 0.71 to 0.99 m, outward-opening steel doors at about 0.9 m on average and an inward-opening steel door at
-2.05 m, in tests reported in Results in Engineering, 2019). No measurements were found for water leaking through
-closed windows or for the depth at which domestic glazing breaks (Kelman's 2002 thesis analyses glass failure, but
-its thresholds were not checked here), so windows are watertight unless the user sets a breaking height, after
-which they pass water like an open door. Door barriers raise the crest of outside doors and are treated as
+2.05 m, in tests reported in Results in Engineering, 2019). For modern English homes, Kelman's PhD (2002,
+University of Cambridge; extended summary at ilankelman.org) found the non-glass parts of doors not to be the weak
+point, but large double-glazed door panels likely to break once the pane is nearly submerged, about 1.5 m of water
+above the ground floor in still water; the help text suggests that value for glazed doors. He found window glass too
+small and too high to break in floods, so windows don't break unless the user sets a height, after which they pass
+water like an open door. His estimates of leakage put a weather-stripped window at about a tenth of a door (as orders
+of magnitude; he later noted that his conversion from air to water leakage needs revising), so closed windows leak
+above the sill at a tenth of the door rate per metre of width. As a cross-check, the Hull door rate extended to 2.5 m
+gives about 0.08 mm/s of rise inside a 55 m2 home through one door, the same order as Kelman's 0.1 mm/s. Door barriers raise the crest of outside doors and are treated as
 watertight up to their top, which is optimistic: in the Hull tests temporary barriers ranged from full protection
 to failure depending on fit and installation. Internal doors are assumed open and are weirs between rooms. Windows
 whose sill is below the ground outside are treated as sealed (and flagged in the check, often a sign of a model
 placed on a slope it wasn't designed for). Airbricks are not modelled: the only figure found is anecdotal (about 500
 litres per hour each), with no measured data. The report then gives, for each room, the depth
-over time (from the engine's output), when it gets wet, for how long, and damage from its deepest water.
+over time (from the engine's output), when it gets wet, for how long, and damage from its deepest water. It also
+gives the largest difference between the water against the walls and the water inside (the floor level while the
+inside is dry) and flags it against Kelman's finding that, in still water, cavity walls of modern English homes start
+to fail at about 0.8 m above the ground floor and most have failed by 2.0 m (Kelman 2002; Kelman and Spence 2003,
+Masonry International 16(2), 51-61). Wall failure itself isn't modelled; the flag matters most with door barriers,
+which keep water out and so raise the difference.
 
 Check (synthetic two-storey house, 18 x 12 m, finished floor 0.15 m above ground, with two outside doors, two
 internal doors and two windows, on a flat plot in Jesmond Vale; 80 mm in an hour on saturated ground): water rose
