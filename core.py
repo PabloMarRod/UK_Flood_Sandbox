@@ -284,6 +284,17 @@ def validate(A, p):
     except (TypeError, ValueError):
         q["damage_factor"] = 1.0
     q["sewer"] = bool(p.get("sewer")) and sewer.load(A) is not None    # an imported drainage network, if the user ticks it
+    q["bld_doors"] = p.get("bld_doors") if p.get("bld_doors") in ("closed", "open") else "closed"   # IFC buildings
+    q["bld_windows"] = p.get("bld_windows") if p.get("bld_windows") in ("watertight", "break") else "watertight"
+    q["bld_door_type"] = p.get("bld_door_type") if p.get("bld_door_type") in ("typical", "outward", "custom") else "typical"
+    for k_, d_, lo, hi in (("bld_leak_06", 4000.0, 0.0, 100000.0), ("bld_door_fail", 0.0, 0.0, 3.0), ("bld_barrier", 0.0, 0.0, 2.0),
+                           ("bld_window_break", 0.0, 0.0, 3.0)):
+        try:
+            q[k_] = min(max(float(p.get(k_) if p.get(k_) not in (None, "") else d_), lo), hi)
+        except (TypeError, ValueError):
+            q[k_] = d_
+    if q["bld_windows"] == "break" and q["bld_window_break"] <= 0:
+        warn.append("Windows set to break but no breaking height given: they are treated as watertight.")
     q["sewer_cover"] = p.get("sewer_cover") if p.get("sewer_cover") in ("solid", "grated", "sealed") else "solid"
     for k_, d_, lo, hi in (("sewer_cover_area", 0.3, 0.05, 2.0), ("sewer_grate_area", 0.1, 0.01, 2.0),
                            ("sewer_gully_lps", 20.0, 0.0, 500.0), ("sewer_chamber", 1.13, 0.2, 30.0)):
@@ -440,6 +451,11 @@ def write_inp(A, q, path, h5name, est=None):
     if sw:
         for k_ in ("junctions", "outfalls", "storage", "orifices", "pumps", "curves", "xsections", "coords", "nodemap"):
             st1d[k_] += sw[k_]
+    bl = ifcbuilding.model_lines(A, q, lines, cache, Path(path).with_name("ifc_nodes.json"))   # water inside IFC buildings
+    for k_ in ("junctions", "storage", "orifices", "xsections", "coords", "nodemap", "controls"):
+        st1d[k_] += bl[k_]
+    weirs_all = (sw["weirs"] if sw else []) + bl["weirs"]
+    outlets_all = (sw["outlets"] if sw else []) + bl["outlets"]
     nodemap = ["[2D_TRIANGLE_NODE_MAP]"] + (["inflow OIN 0.65 4.0"] if F.get("river_inflow") else [])
     nodes, coords, inflows, ts = [], [], [], []
     if q["burst"]:
@@ -533,7 +549,7 @@ def write_inp(A, q, path, h5name, est=None):
          (["[STORAGE]"] + st1d["storage"] if st1d["storage"] else []) + [
           "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
          (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + \
-         (["[WEIRS]"] + sw["weirs"] if sw and sw["weirs"] else []) + (["[OUTLETS]"] + sw["outlets"] if sw and sw["outlets"] else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
+         (["[WEIRS]"] + weirs_all if weirs_all else []) + (["[OUTLETS]"] + outlets_all if outlets_all else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
     if st1d["curves"]: o += ["[CURVES]"] + st1d["curves"]
     if st1d["controls"]: o += ["[CONTROLS]"] + st1d["controls"]
     nodemap += st1d["nodemap"]; coords += st1d["coords"]

@@ -46,6 +46,12 @@ def make_house(path, E=0.0, N=0.0, rot=0.0, ground=0.0, georef=True, unit="METER
     for nm, x, y in (("Front door", 6.0, -0.05), ("Back door", 11.0, Wd - 0.25)):
         d = api.root.create_entity(m, ifc_class="IfcDoor", name=nm); d.OverallHeight = 2.1 * k; d.OverallWidth = 0.9 * k
         place(d, x, y, ffl); box(d, 0.9, 0.3, 2.1, gf)
+    for nm, x, y, w_, d_ in (("Living to hall", 9.15, 8.0, 0.3, 0.9), ("Hall to kitchen", 13.0, 6.15, 0.9, 0.3)):   # internal doors
+        d = api.root.create_entity(m, ifc_class="IfcDoor", name=nm); d.OverallHeight = 2.1 * k; d.OverallWidth = 0.9 * k
+        place(d, x - w_ / 2, y - d_ / 2, ffl); box(d, w_, d_, 2.1, gf)
+    for nm, x, y in (("Living room window", 3.0, -0.05), ("Kitchen window", 14.0, -0.05)):         # windows, sill 0.9 m
+        wi = api.root.create_entity(m, ifc_class="IfcWindow", name=nm); wi.OverallHeight = 1.2 * k; wi.OverallWidth = 1.5 * k
+        place(wi, x, y, ffl + 0.9); box(wi, 1.5, 0.3, 1.2, gf)
     for nm, use, x, y, sx, sy, st, z0 in (("G01", "Living room", 0.3, 0.3, 9.0, 11.4, gf, ffl), ("G02", "Kitchen", 9.3, 0.3, 8.4, 6.0, gf, ffl),
                                           ("G03", "Hall", 9.3, 6.3, 8.4, 5.4, gf, ffl), ("F01", "Bedroom", 0.3, 0.3, 9.0, 11.4, ff, ffl + STOREY),
                                           ("F02", "Bedroom", 9.3, 0.3, 8.4, 11.4, ff, ffl + STOREY)):
@@ -54,5 +60,5 @@ def make_house(path, E=0.0, N=0.0, rot=0.0, ground=0.0, georef=True, unit="METER
     m.write(str(path)); return path
 
 
-# the test site: on a mapped building in Jesmond Vale where the June 2012 storm brings water close
-SITE = dict(E=426189.18, N=566292.08, rot=48.2, ground=19.69)
+# the test site: a flat plot (24 cm of fall) on a mapped house in Jesmond Vale where the June 2012 storm brings water close
+SITE = dict(E=426127.34, N=565794.83, rot=55.6, ground=38.58)

@@ -588,14 +588,45 @@ since on a slope uphill cells only carry a film of rain on ground already above 
 outside over time (cells within 7.5 m with ground at or below the threshold), the peak, the margin, when it first
 rises above the threshold and for how long, with doors whose surrounding ground is above the threshold flagged;
 and the ground-floor spaces below the peak level, with the depth they would take and indicative damage from the
-JRC curve for their use (residential, commercial or industrial, from the space's name) and floor area. Stage 1
-doesn't model water passing through doors, so spaces are an upper bound. Reports for runs made before a building
-was added are refused.
+JRC curve for their use (residential, commercial or industrial, from the space's name) and floor area.
 
-Check (synthetic two-storey house, 18 x 12 m, finished floor 0.15 m above ground, on the valley side in Jesmond
-Vale, with the 2012 storm pattern): water came within 8 cm of the back door threshold and stayed below the floor
-level. `tests/test_ifc.py` covers georeferenced, millimetre and local models, placement, the level repair and a
-typed level, the blocking checks, the mesh override and its removal, and a report on an engine run.
+Water inside. Each ground-floor and lower space becomes a storage node (its floor level, area and height), or each
+storey becomes one volume (85% of the footprint) when spaces lack outlines or an outside door or window doesn't lie
+on a space; the check report says which and why. Doors and windows are classed as outside (within 0.8 m of the
+outline) or internal, and joined to the spaces around them by position and level. Each outside opening gets a small
+node coupled to the lowest open cell within two cells of it, with its top at the higher of the ground and the
+threshold or sill, so water enters only once it stands above it. The opening itself is a pair of SWMM outlets (one
+each way, so water drains out again) with a flow-head rule, since an opening height would lift the outside node's
+top and cut it off from the surface. A closed door leaks in proportion to the depth of water above its threshold,
+following laboratory tests of six common UK external doors (composite, wooden, uPVC and fire-rated) for Flood Re
+(McLelland et al. 2026, University of Hull, doi:10.5281/zenodo.23220942): leakage rose linearly with depth, from just
+over 1,000 litres per hour per metre of door width at 0.2 m to about 4,000 at 0.6 m, so the model uses about 6,700
+L/h per metre of width per metre of depth. Individual doors ranged from almost nothing to about 10,000 L/h per metre
+at 0.6 m, and outward-opening doors leaked about 74% less on average (only two were tested); the scenario offers a
+typical door, an outward-opening door, or a rate the user sets. An open door, or a closed door once it gives way,
+passes water as a weir over its width. Giving way is a control rule (closed until the water outside reaches the set
+height above the threshold, then open, and open once water is inside); it is off by default, as no domestic door
+gave way up to 0.6 m in the Hull tests, and the only failure depths found are for non-domestic doors (hollow-core
+doors at 0.71 to 0.99 m, outward-opening steel doors at about 0.9 m on average and an inward-opening steel door at
+2.05 m, in tests reported in Results in Engineering, 2019). No measurements were found for water leaking through
+closed windows or for the depth at which domestic glazing breaks (Kelman's 2002 thesis analyses glass failure, but
+its thresholds were not checked here), so windows are watertight unless the user sets a breaking height, after
+which they pass water like an open door. Door barriers raise the crest of outside doors and are treated as
+watertight up to their top, which is optimistic: in the Hull tests temporary barriers ranged from full protection
+to failure depending on fit and installation. Internal doors are assumed open and are weirs between rooms. Windows
+whose sill is below the ground outside are treated as sealed (and flagged in the check, often a sign of a model
+placed on a slope it wasn't designed for). Airbricks are not modelled: the only figure found is anecdotal (about 500
+litres per hour each), with no measured data. The report then gives, for each room, the depth
+over time (from the engine's output), when it gets wet, for how long, and damage from its deepest water.
+
+Check (synthetic two-storey house, 18 x 12 m, finished floor 0.15 m above ground, with two outside doors, two
+internal doors and two windows, on a flat plot in Jesmond Vale; 80 mm in an hour on saturated ground): water rose
+about 6 cm above the back door threshold. With doors closed, at the measured leakage rate, about 4 mm leaked in;
+with doors open the three ground-floor rooms took 10 to 13 cm for 20
+to 25 minutes (indicative damage about EUR 8,600); with 0.6 m door barriers they stayed dry. Flow routing continuity
+stayed within 0.1%. `tests/test_ifc.py` covers georeferenced, millimetre and local models, placement, the level repair and a
+typed level, the blocking checks, the mesh override and its removal, a report on an engine run, and water getting in
+through open doors but not past barriers.
 
 ## Model notes
 

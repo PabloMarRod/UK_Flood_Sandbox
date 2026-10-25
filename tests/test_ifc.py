@@ -22,7 +22,10 @@ def test_georeferenced_model_lands_in_place(A, G, tmp_path):
     assert r["status"] == "ok", r["issues"]
     b = r["building"]
     assert abs(b["area"] - 216) < 3 and abs(b["ffl"] - (SITE["ground"] + 0.15)) < 0.01
-    assert [d["name"] for d in b["doors"]] == ["Front door", "Back door"] and all(abs(d["sill"] - b["ffl"]) < 0.01 for d in b["doors"])
+    assert [d["name"] for d in b["doors"] if d["kind"] == "external"] == ["Front door", "Back door"]
+    assert {d["name"]: d["spaces"] for d in b["doors"] if d["kind"] == "internal"} == {"Living to hall": ["G01", "G03"], "Hall to kitchen": ["G02", "G03"]}
+    assert all(abs(d["sill"] - b["ffl"]) < 0.01 for d in b["doors"]) and b["interior"]["mode"] == "spaces"
+    assert {w["name"]: w["spaces"] for w in b["windows"]} == {"Living room window": ["G01"], "Kitchen window": ["G02"]}
     assert {s["use"] for s in b["spaces"]} == {"Living room", "Kitchen", "Hall", "Bedroom"} and len(b["replaces"]) == 1
     assert abs(b["rot"] - SITE["rot"]) < 0.5
 
@@ -98,7 +101,51 @@ def test_building_report_on_a_run(A, G, tmp_path, monkeypatch):
     assert "error" not in r, r
     assert len(r["doors"]) == 2 and len(r["times_min"]) == len(r["doors"][0]["series"])
     assert all(d["margin"] is None or abs(d["margin"]) < 5 for d in r["doors"])          # levels on a sane scale
-    assert {s["name"] for s in r["spaces"]} == {"G01", "G02", "G03", "F01", "F02"}
-    assert all(s["depth_if_entered"] == 0 for s in r["spaces"] if s["storey"] == "First Floor")
+    assert {s["name"] for s in r["spaces"]} == {"G01", "G02", "G03", "F01", "F02"} and r["inside"]["mode"] == "spaces"
+    assert all(s["max_depth"] < 0.01 for s in r["spaces"] if s["storey"] == "First Floor")
     other = tmp_path / "old"; other.mkdir(); (other / "ifc_buildings.json").write_text("[]")
     assert "error" in ib.report(A2, other, bid)                                    # runs made before the building
+
+
+@pytest.mark.engine
+def test_open_doors_let_water_in_and_barriers_keep_it_out(A, G, tmp_path, monkeypatch):
+    A2 = _area_copy(A, tmp_path)
+    f = make_house(tmp_path / "h.ifc", **SITE)
+    bid = ib.save(A2, f, ib.check(f, A2, G), "Test house"); areas.build_mesh(A2)
+    import openswmm.engine as eng
+    depth = {}
+    for case, extra in (("open", dict(bld_doors="open")), ("barrier", dict(bld_doors="open", bld_barrier=0.6))):
+        q, _ = core.validate(A2, dict(depth=80, duration=60, profile="centre", soil="wet", sim=1.25, **extra))
+        run = tmp_path / case; run.mkdir(); monkeypatch.chdir(run)
+        forcing = core.write_inp(A2, q, run / "model.inp", "model.h5")
+        eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), lambda frac: None)
+        rpt = (run / "model.rpt").read_text()
+        assert "maximum depth increased for Node IO" not in rpt               # openings must not lift the outside nodes
+        assert max(abs(float(l.split()[-1])) for l in rpt.split("\n") if "Continuity Error (%)" in l) < 0.5
+        core.postprocess(A2, str(run / "model.h5"), q, forcing, 1.0)
+        r = ib.report(A2, run, bid)
+        assert any(d["margin"] is not None and d["margin"] < 0 for d in r["doors"])   # water does rise above a threshold
+        depth[case] = max(s["max_depth"] for s in r["spaces"])
+    assert depth["open"] > 0.05 and depth["barrier"] < 0.01
+
+
+def test_door_leakage_follows_the_measured_rates_and_windows_stay_sealed(A, G, tmp_path):
+    A2 = _area_copy(A, tmp_path)
+    f = make_house(tmp_path / "h.ifc", **SITE)
+    ib.save(A2, f, ib.check(f, A2, G), "Test house"); areas.build_mesh(A2)
+    def outlets(**kw):
+        q, warn = core.validate(A2, dict(depth=30, duration=30, sim=0.5, **kw))
+        core.write_inp(A2, q, tmp_path / "m.inp", "m.h5")
+        t = (tmp_path / "m.inp").read_text(); sec = t.split("[OUTLETS]")[1].split("[")[0]
+        return [l.split() for l in sec.split("\n") if l.startswith("I")], warn
+    o, _ = outlets()
+    leak = [l for l in o if l[0].startswith("IL")]
+    assert len(leak) == 2 and not any(l[0].startswith("IW") for l in o)              # two outside doors; windows sealed
+    # 0.9 m door: 6,700 L/h per m width per m depth, linear in depth (exponent 1)
+    assert all(abs(float(l[5]) - 6700 * 0.9 / 3.6e6) < 1e-6 and l[6] == "1.0" for l in leak)
+    o, _ = outlets(bld_door_type="outward")
+    assert all(abs(float(l[5]) - 6700 * 0.26 * 0.9 / 3.6e6) < 1e-6 for l in o if l[0].startswith("IL"))
+    o, warn = outlets(bld_windows="break")                                           # no height given
+    assert not any(l[0].startswith("IW") for l in o) and any("treated as watertight" in w for w in warn)
+    o, _ = outlets(bld_windows="break", bld_window_break=0.5)
+    assert sum(l[0].startswith("IW") for l in o) == 2                                # both windows can now break

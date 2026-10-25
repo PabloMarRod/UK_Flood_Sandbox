@@ -88,13 +88,24 @@ def read(path):
                                  width=float((d.OverallWidth or 0) * scale) or None, height=float((d.OverallHeight or 0) * scale) or None,
                                  storey=cont.Name if cont else None))
         out["mesh"].append(dict(cls="IfcDoor", v=np.round(v, 3).tolist(), f=g[1].tolist()))
+    out["windows"] = []
+    for w in m.by_type("IfcWindow"):
+        g = shape(w)
+        if not g: continue
+        v, _ = g; c = v.mean(axis=0)
+        out["windows"].append(dict(name=w.Name or w.GlobalId, x=float(c[0]), y=float(c[1]), sill=float(v[:, 2].min()),
+                                   top=float(v[:, 2].max()), width=float((w.OverallWidth or 0) * scale) or None))
+        out["mesh"].append(dict(cls="IfcWindow", v=np.round(v, 3).tolist(), f=g[1].tolist()))
     for sp in m.by_type("IfcSpace"):
         g = shape(sp)
         if not g: continue
         v, f = g; p = plan(v, f)
         storey = ifcopenshell.util.element.get_aggregate(sp) or ifcopenshell.util.element.get_container(sp)
+        if p is not None and p.geom_type == "MultiPolygon": p = max(p.geoms, key=lambda g_: g_.area)
         out["spaces"].append(dict(name=sp.Name, use=sp.LongName or sp.ObjectType or "", storey=getattr(storey, "Name", None),
-                                  floor=float(v[:, 2].min()), area=round(float(p.area), 2) if p is not None else 0.0))
+                                  floor=float(v[:, 2].min()), height=round(float(v[:, 2].max() - v[:, 2].min()), 2),
+                                  area=round(float(p.area), 2) if p is not None else 0.0,
+                                  poly=[list(c) for c in p.exterior.coords] if p is not None and p.geom_type == "Polygon" else None))
     fp = unary_union(parts) if parts else None
     if fp is not None and not fp.is_empty:
         fp = fp.buffer(0.3).buffer(-0.3)                                  # close hairline gaps between walls
@@ -190,6 +201,21 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
             ffl = target; dz += shift
     if not r["spaces"]:
         add(issue("W_NO_SPACES", "warn", "No spaces found", [], "Damage can't be split by room use; the whole footprint is used."))
+    interior = _interior(r, fp, ffl - dz if ffl is not None else None)
+    below = []                                                       # openings whose sill is under the ground outside
+    for o, kind in [(d, interior["doors"][k]) for k, d in enumerate(doors)] + \
+                   [(dict(w, sill=w["sill"] + dz), interior["windows"][k]) for k, w in enumerate(r.get("windows", []))]:
+        if kind["kind"] != "external": continue
+        gx, gy = to_bng(g, o["x"], o["y"]); zo = ground.at(gx, gy, 2)
+        if zo is not None and zo > o["sill"] + 0.1: below.append(f"{o['name']} ({zo - o['sill']:.2f} m)")
+    if below:
+        add(issue("W_BELOW_GROUND", "warn", "Openings below the ground outside", below,
+                  "The LiDAR ground outside is above these sills, often because the model sits on a slope it wasn't designed "
+                  "for. Windows below ground are treated as sealed; doors stay open to water running down to them."))
+    if interior["mode"] == "storeys":
+        add(issue("W_INTERIOR_STOREY", "warn", "Water inside is modelled per storey", [interior["reason"]],
+                  "Each storey is one volume. Rooms are modelled separately when every outside door and window lies on a "
+                  "space and internal doors join the spaces."))
     # buildings it replaces
     osm = _osm_overlaps(A, fpb)
     if osm:
@@ -203,12 +229,40 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
                ffl=round(ffl, 3) if ffl is not None else None, ground_min=round(gmin, 3) if gmin is not None else None,
                height=round(r["zmax"] - r["zmin"], 2), top=round(r["zmax"] + dz, 3),
                doors=[dict(name=d["name"], x=round(xy(d["x"], d["y"])[0], 2), y=round(xy(d["x"], d["y"])[1], 2), sill=round(d["sill"], 3),
-                           width=d["width"], height=d["height"], storey=d["storey"]) for d in doors],
-               spaces=[dict(s, floor=round(s["floor"] + dz, 3)) for s in r["spaces"]], storeys=[round(z, 3) for z in storey_levels],
+                           width=d["width"], height=d["height"], storey=d["storey"], kind=o["kind"], spaces=o["spaces"])
+                      for d, o in zip(doors, interior["doors"])],
+               windows=[dict(name=w["name"], x=round(xy(w["x"], w["y"])[0], 2), y=round(xy(w["x"], w["y"])[1], 2),
+                             sill=round(w["sill"] + dz, 3), top=round(w["top"] + dz, 3), width=w["width"], kind=o["kind"], spaces=o["spaces"])
+                        for w, o in zip(r["windows"], interior["windows"])],
+               spaces=[dict({k: v for k, v in s.items() if k != "poly"}, floor=round(s["floor"] + dz, 3),
+                            poly=[list(map(lambda v: round(v, 3), xy(x, y))) for x, y in s["poly"]] if s.get("poly") else None)
+                       for s in r["spaces"]], storeys=[round(z, 3) for z in storey_levels],
+               interior=dict(mode=interior["mode"], reason=interior.get("reason")),
                placement=dict(E=g["E"], N=g["N"], a=g["a"], b=g["b"], scale=g["scale"], dz=dz, source=g["source"]),
                replaces=osm, schema=r["schema"])
     bld["rot"] = round(math.degrees(math.atan2(g["b"], g["a"])) % 360, 1)
     return dict(status=status, issues=iss, building=bld if status == "ok" else None, preview=bld, local=_local(r))
+
+
+def _interior(r, fp, ffl_local):
+    """Which outside or inside each opening joins, and whether rooms can be modelled separately."""
+    from shapely.geometry import Point, Polygon
+    polys = [(s["name"], Polygon(s["poly"]).buffer(0.6)) if s.get("poly") else (s["name"], None) for s in r["spaces"]]
+    ring = fp.exterior
+    def classify(o):
+        pt = Point(o["x"], o["y"]); ext = ring.distance(pt) < 0.8
+        sp = [n for n, pg in polys if pg is not None and pg.contains(pt)]
+        # an opening joins the spaces on the same level as its sill
+        lvl = {s["name"]: s["floor"] for s in r["spaces"]}
+        sp = [n for n in sp if abs(lvl[n] - o["sill"]) < 1.5 or (o.get("top") and lvl[n] <= o["sill"] <= lvl[n] + 3)]
+        return dict(kind="external" if ext else "internal", spaces=sp[:1] if ext else sp[:2])
+    doors = [classify(d) for d in r["doors"]]; wins = [classify(dict(w, top=w["top"])) for w in r.get("windows", [])]
+    if not r["spaces"] or any(s.get("poly") is None for s in r["spaces"]):
+        return dict(mode="storeys", reason="spaces without outlines", doors=doors, windows=wins)
+    unmapped = [o for o in doors + wins if o["kind"] == "external" and not o["spaces"]]
+    if unmapped:
+        return dict(mode="storeys", reason=f"{len(unmapped)} outside opening(s) not on a space", doors=doors, windows=wins)
+    return dict(mode="spaces", doors=doors, windows=wins)
 
 
 def _local(r):
@@ -320,7 +374,7 @@ def _use_type(use):
 def report(A, run_dir, bid):
     """Water against one IFC building in a finished run: at each door against its threshold, around the building
     against the finished floor level, and the ground-floor spaces that would take water if it got in.
-    Spaces are an upper bound: stage 1 doesn't model water passing through doors."""
+    Rooms come from the modelled water inside when the run has it; otherwise (older runs) they are an upper bound."""
     import json, netCDF4
     from shapely.geometry import Point, Polygon
     import core
@@ -364,7 +418,7 @@ def report(A, run_dir, bid):
     dep = np.nanmax(np.where(np.isfinite(DP[:, [c[0] for c in ring], [c[1] for c in ring]]), DP[:, [c[0] for c in ring], [c[1] for c in ring]], 0), axis=1) if ring else np.zeros(len(t))
     peak = float(np.nanmax(lv)) if np.isfinite(lv).any() else None
     doors = []
-    for d in b["doors"]:
+    for d in [d for d in b["doors"] if d.get("kind", "external") == "external"]:   # internal doors don't face the outside
         near = cells_near(Point(d["x"], d["y"]), 7.5); lo = low(near, d["sill"])
         raised = not lo and bool(near)                                    # outside ground above the threshold all round
         if raised: near = sorted(near, key=lambda c: (XX[c] - d["x"]) ** 2 + (YY[c] - d["y"]) ** 2)[:2]
@@ -386,11 +440,187 @@ def report(A, run_dir, bid):
         frac = float(np.interp(min(max(depth, 0), 6.0), core.JRC_DEPTH, core.JRC_EUROPE[typ])) if depth > 0 else 0.0
         spaces.append(dict(name=s["name"], use=s.get("use"), storey=s.get("storey"), area=s["area"], floor=s["floor"],
                            depth_if_entered=round(max(depth, 0), 3), type=typ, damage_eur=round(frac * core.JRC_UK_MAX[typ] * s["area"])))
+    inside = _inside(run_dir, bid)                                    # water modelled inside the building
+    note = "This run didn't model water inside, so spaces assume water that rises above a threshold gets in."
+    if inside:
+        spaces = []
+        for name, v in inside["spaces"].items():
+            typ = _use_type(v.get("use")); d = v["max_depth"]
+            frac = float(np.interp(min(d, 6.0), core.JRC_DEPTH, core.JRC_EUROPE[typ])) if d > 0.02 else 0.0
+            spaces.append(dict(name=name, use=v.get("use"), storey=v.get("storey"), area=v["area"], floor=v["floor"],
+                               max_depth=round(d, 3), first_wet_min=v["first_wet_min"], minutes_wet=v["minutes_wet"],
+                               series=v["series"], type=typ, damage_eur=round(frac * core.JRC_UK_MAX[typ] * v["area"])))
+        note = ("Water inside is modelled through the doors and windows, with the opening settings of this scenario "
+                f"({inside['mode']}). Leakage and failure settings are assumptions.")
     c = fp.centroid
     return dict(id=bid, name=b.get("name"), ffl=ffl, ground_min=b.get("ground_min"), times_min=[round(float(v)) for v in t],
+                inside=dict(mode=inside["mode"], times_min=inside["times_min"], skipped=inside["skipped"]) if inside else None,
                 centre=[round(c.x, 2), round(c.y, 2)], local=[round(c.x - A["X0"], 1), round(A["Y1"] - c.y, 1)],
                 around=dict(peak_level=round(peak, 3) if peak is not None else None, peak_depth=round(float(np.max(dep)), 3),
                             first_wet_min=first(dep > 0.05), level=[None if not np.isfinite(v) else round(float(v), 3) for v in lv]),
                 ffl_exceeded=bool(over_ffl.any()), ffl_first_min=first(over_ffl), ffl_minutes=round(float(over_ffl.sum() * dt)),
-                doors=doors, spaces=spaces, damage_eur=sum(s_["damage_eur"] for s_ in spaces),
-                note="Spaces assume water that rises above a threshold gets in; water passing through doors isn't modelled yet.")
+                doors=doors, spaces=spaces, damage_eur=sum(s_["damage_eur"] for s_ in spaces), note=note)
+
+
+def _inside(run_dir, bid):
+    """Depth in each modelled room over time, from the engine's output (None if the run didn't model the inside)."""
+    import json
+    p = Path(run_dir) / "ifc_nodes.json"; o_ = Path(run_dir) / "model.out"
+    if not p.exists() or not o_.exists():
+        return None
+    info = json.loads(p.read_text()).get(bid)
+    if not info or not info.get("spaces"):
+        return None
+    from openswmm.output import Output, NodeAttribute
+    with Output(str(o_)) as o:
+        times = list(o.times)
+        step = (times[1] - times[0]).total_seconds() / 60 if len(times) > 1 else 5.0
+        mins = [round((tt - times[0]).total_seconds() / 60 + step, 1) for tt in times]
+        stride = max(1, len(mins) // 72)                                 # at most ~72 points for the chart
+        out = {}
+        for name, v in info["spaces"].items():
+            d = np.array(list(o.get_node_timeseries(v["node"], NodeAttribute.INVERT_DEPTH).values()), float)
+            wet = d > 0.02
+            out[name] = dict(v, max_depth=float(d.max()) if len(d) else 0.0, first_wet_min=mins[int(np.argmax(wet))] if wet.any() else None,
+                             minutes_wet=round(float(wet.sum() * step)), series=[round(float(x), 3) for x in d[::stride]])
+    return dict(mode=info["mode"], spaces=out, times_min=mins[::stride], skipped=info.get("skipped", 0))
+
+
+# ------------------------------------------------------------------------------------------------ water inside
+# Leakage through closed domestic external doors rises linearly with water depth above the threshold: just over
+# 1,000 litres per hour per metre of width at 0.2 m and about 4,000 at 0.6 m (University of Hull tests of six UK
+# doors for Flood Re, McLelland et al. 2026, doi:10.5281/zenodo.23220942). As a rate per metre of width per metre
+# of depth that is about 6,700 L/h; outward-opening doors leaked about 74% less on average (only two were tested).
+DOOR_LEAK = {"typical": 6700.0, "outward": 6700.0 * 0.26}     # L/h per m width per m depth
+DOOR_HEIGHT = 2.1         # m, when the model has none
+
+
+def model_lines(A, q, lines, cache, sidecar=None):
+    """SWMM lines for the inside of each IFC building: a storage node per ground-floor space (or per storey), and
+    each outside door and window as a link from a small node coupled to the cell outside. Closed doors and windows
+    leak in proportion to the water above their threshold (measured rates, see DOOR_LEAK); windows are watertight
+    unless set to break at a height; open doors (or doors and windows that give way at a set height) pass
+    water over their full width. Internal doors join rooms. Everything is two-way, so water drains out again."""
+    import json
+    from shapely.geometry import Polygon, Point
+    blds = [b for b in load_all(A) if b.get("interior")]
+    out = dict(junctions=[], storage=[], orifices=[], weirs=[], outlets=[], xsections=[], controls=[], coords=[], nodemap=[])
+    if not blds:
+        return out
+    H, X0, Y1 = A["H"], A["X0"], A["Y1"]
+    t0 = lines.index("[2D_TRIANGLES]") + 1; v0 = lines.index("[2D_VERTICES]") + 1
+    tsq = np.load(cache / "mesh.npz")["tsq"]
+    first = {}
+    for k, (j, i) in enumerate(tsq.tolist()): first.setdefault((j, i), k)
+    vz = np.array([float(l.split()[2]) for l in lines[v0:t0 - 2] if len(l.split()) >= 3])
+    tri = {}
+    def tags(k):
+        if k not in tri: tri[k] = lines[t0 + k].split()
+        return tri[k]
+    OPEN = ("mixed", "green", "paved", "perm", "raing", "swale", "wood")
+    taken = set()
+    def cell_near(x, y, r=2):
+        """The lowest open cell within r cells: where water outside the opening collects (on a slope the nearest
+        cell can sit a few centimetres above it)."""
+        j0, i0 = int((Y1 - y) // H), int((x - X0) // H)
+        best = None
+        for j in range(j0 - r, j0 + r + 1):
+            for i in range(i0 - r, i0 + r + 1):
+                kk = first.get((j, i))
+                if kk is None or (j, i) in taken or tags(kk)[5] not in OPEN: continue
+                z = float(np.mean([vz[int(v)] for v in tags(kk)[:3]])); d = (j - j0) ** 2 + (i - i0) ** 2
+                key = (round(z, 2), d)
+                if best is None or key < best[0]: best = (key, j, i)
+        return None if best is None else (best[1], best[2])
+    doors_mode = q.get("bld_doors", "closed")
+    rate = DOOR_LEAK.get(q.get("bld_door_type", "typical")) or float(q.get("bld_leak_06", 4000)) / 0.6   # L/h/m/m
+    fail = float(q.get("bld_door_fail", 0) or 0); barrier = float(q.get("bld_barrier", 0) or 0)
+    wmode = q.get("bld_windows", "watertight"); wbreak = float(q.get("bld_window_break") or 0)
+    if wmode == "break" and wbreak <= 0: wmode = "watertight"                  # no breaking height set
+    side, rules, nr = {}, [], 0
+    for n, b in enumerate(blds):
+        info = dict(mode=b["interior"]["mode"], spaces={}, openings=[], skipped=0)
+        fpb = Polygon(b["footprint"])
+        # interior volumes
+        vol = {}
+        if b["interior"]["mode"] == "spaces":
+            for j, s in enumerate(b["spaces"]):
+                if not s.get("poly") or s["area"] <= 0: continue
+                node = f"IB{n}_{j}"; c = Polygon(s["poly"]).centroid
+                out["storage"].append(f"{node} {s['floor']:.3f} {max(s.get('height') or 2.7, 0.5):.3f} 0 FUNCTIONAL 0 0 {s['area']:.3f} 0 0")
+                out["coords"].append(f"{node} {c.x:.2f} {c.y:.2f}"); vol[s["name"]] = node
+                info["spaces"][s["name"]] = dict(node=node, floor=s["floor"], area=s["area"], use=s.get("use"), storey=s.get("storey"))
+            where = lambda o: vol.get(o["spaces"][0]) if o.get("spaces") else None
+        else:
+            levels = sorted(b.get("storeys") or [b["ffl"]])
+            c = fpb.centroid
+            for j, z in enumerate(levels):
+                h = (levels[j + 1] - z) if j + 1 < len(levels) else 2.7
+                node = f"IB{n}_s{j}"
+                out["storage"].append(f"{node} {z:.3f} {max(h, 0.5):.3f} 0 FUNCTIONAL 0 0 {0.85 * fpb.area:.3f} 0 0")
+                out["coords"].append(f"{node} {c.x:.2f} {c.y:.2f}"); vol[j] = node
+                info["spaces"][f"Storey at {z:.2f} m"] = dict(node=node, floor=z, area=round(0.85 * fpb.area, 1), use="", storey=None)
+            def where(o):
+                ks = [j for j, z in enumerate(levels) if z <= o["sill"] + 0.05]
+                return vol[ks[-1]] if ks else vol[0]
+        # openings to the outside
+        ops = [dict(o, is_door=True) for o in b.get("doors", []) if o.get("kind") == "external"] + \
+              [dict(o, is_door=False) for o in b.get("windows", []) if o.get("kind") == "external"]
+        for k, o in enumerate(ops):
+            inside = where(o)
+            c = cell_near(o["x"], o["y"])
+            if c is not None and not o["is_door"]:                         # a window below the ground outside is a wall
+                kk0 = first[c]; z0 = float(np.mean([vz[int(v)] for v in tags(kk0)[:3]]))
+                if z0 > o["sill"] + 0.1:
+                    info["skipped"] += 1; continue
+            if inside is None or c is None:
+                info["skipped"] += 1; continue
+            taken.add(c); jj, ii = c; kk = first[(jj, ii)]
+            z = float(np.mean([vz[int(v)] for v in tags(kk)[:3]]))
+            on = f"IO{n}_{k}"; w = o.get("width") or (0.9 if o["is_door"] else 1.0)
+            hgt = (o.get("height") or DOOR_HEIGHT) if o["is_door"] else max(0.3, (o.get("top") or o["sill"] + 1.2) - o["sill"])
+            crest = o["sill"] + (barrier if o["is_door"] else 0.0)
+            tg = f"bo{n}_{k}"
+            for t in (kk, kk + 1):
+                if t < len(tsq) and tuple(tsq[t]) == (jj, ii): tags(t)[5] = tg
+            # the engine takes water from the surface into a node above its top, so the outside node's top is the
+            # higher of the ground and the crest: water gets in only once it stands above the threshold
+            top = max(z, crest) + 0.005
+            out["junctions"].append(f"{on} {top - 0.3:.3f} 0.3 0 10.0 0")
+            out["nodemap"].append(f"{tg} {on} 0.65 {min(1.0, max(0.05, 0.5 * w)):.3f}")
+            out["coords"].append(f"{on} {o['x']:.2f} {o['y']:.2f}")
+            # openings as outlets with a flow-head rule (no opening height to reach above the node), one each way
+            c_full = 1.6 * w                                               # weir: Q = 1.6 * width * h^1.5
+            lk = lr = None
+            if o["is_door"]:                                               # closed doors leak in proportion to depth
+                c_leak = rate * w / 3.6e6                                  # m3/s per m of water above the threshold
+                lk, lr = f"IL{n}_{k}", f"IR{n}_{k}"
+                out["outlets"].append(f"{lk} {on} {inside} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
+                out["outlets"].append(f"{lr} {inside} {on} {crest:.3f} FUNCTIONAL/HEAD {c_leak:.7f} 1.0 NO")
+            full = (o["is_door"] and (doors_mode == "open" or fail > 0)) or (not o["is_door"] and wmode == "break")
+            wl = None
+            if full:
+                wl, wr = f"IW{n}_{k}", f"IV{n}_{k}"
+                out["outlets"].append(f"{wl} {on} {inside} {crest:.3f} FUNCTIONAL/HEAD {c_full:.4f} 1.5 NO")
+                out["outlets"].append(f"{wr} {inside} {on} {crest:.3f} FUNCTIONAL/HEAD {c_full:.4f} 1.5 NO")
+                h_fail = fail if o["is_door"] and doors_mode != "open" else (wbreak if not o["is_door"] else None)   # windows: watertight until they break
+                if h_fail:                                                    # closed until the water outside reaches it,
+                    lvl = crest + h_fail                                      # then open (and open once water is inside)
+                    nr += 1
+                    rules.append(f"RULE IFC{nr}a\nIF NODE {on} HEAD < {lvl:.3f}\nAND NODE {inside} DEPTH < 0.01\nTHEN OUTLET {wl} SETTING = 0\nAND OUTLET {wr} SETTING = 0")
+                    rules.append(f"RULE IFC{nr}b\nIF NODE {on} HEAD >= {lvl:.3f}\nTHEN OUTLET {wl} SETTING = 1\nAND OUTLET {wr} SETTING = 1")
+            info["openings"].append(dict(name=o["name"], door=o["is_door"], outside=on, leak=lk, full=wl, crest=round(crest, 3)))
+        # internal doors (assumed open)
+        if b["interior"]["mode"] == "spaces":
+            for k, o in enumerate(d for d in b.get("doors", []) if d.get("kind") == "internal" and len(d.get("spaces", [])) == 2):
+                a_, b_ = vol.get(o["spaces"][0]), vol.get(o["spaces"][1])
+                if not a_ or not b_: continue
+                wl = f"ID{n}_{k}"
+                out["weirs"].append(f"{wl} {a_} {b_} TRANSVERSE {o['sill']:.3f} 1.6 NO 0 0")
+                out["xsections"].append(f"{wl} RECT_OPEN {(o.get('height') or DOOR_HEIGHT):.3f} {(o.get('width') or 0.9):.3f} 0 0")
+        side[b["id"]] = info
+    for kk, p in tri.items(): lines[t0 + kk] = " ".join(p)
+    out["controls"] = rules
+    if sidecar:
+        Path(sidecar).write_text(json.dumps(side))
+    return out

@@ -417,6 +417,26 @@ label.chk.big{font-size:14px;color:var(--ink)}
         </div>
         <div class="hint">Changes how fast parks and gardens soak up water. Parameters are assumed, not measured.</div>
       </div>
+      <div class="field" id="bldField" hidden>
+        <span class="lbl">IFC buildings: doors and windows</span>
+        <div class="swgrid" style="grid-template-columns:200px 1fr;margin-top:4px">
+          <span>Outside doors</span>
+          <select name="bld_doors"><option value="closed" selected>Closed (they leak)</option><option value="open">Open</option></select>
+          <span>Closed doors leak like</span>
+          <select name="bld_door_type"><option value="typical" selected>A typical door (about 4,000 L/h per m at 0.6 m deep)</option><option value="outward">An outward-opening door (about 74% less)</option><option value="custom">A rate I set</option></select>
+          <span>Custom leakage at 0.6 m deep</span>
+          <span class="inline"><input class="num" type="number" name="bld_leak_06" min="0" max="100000" step="100" value="4000" style="width:90px" aria-label="Leakage in litres per hour per metre of door width"><span class="unit">L/h per m of door width</span></span>
+          <span>A closed door gives way at</span>
+          <span class="inline"><input class="num" type="number" name="bld_door_fail" min="0" max="3" step="0.05" value="0" style="width:80px" aria-label="Failure height in metres"><span class="unit">m above the threshold (0: never)</span></span>
+          <span>Door barriers</span>
+          <span class="inline"><input class="num" type="number" name="bld_barrier" min="0" max="2" step="0.05" value="0" style="width:80px" aria-label="Barrier height in metres"><span class="unit">m high (0: none)</span></span>
+          <span>Windows</span>
+          <select name="bld_windows"><option value="watertight" selected>Watertight</option><option value="break">Break at a height I set</option></select>
+          <span>A window breaks at</span>
+          <span class="inline"><input class="num" type="number" name="bld_window_break" min="0" max="3" step="0.05" value="" placeholder="not set" style="width:80px" aria-label="Breaking height in metres"><span class="unit">m above the sill</span></span>
+        </div>
+        <div class="hint">Water reaches the inside of each IFC building through its outside doors and windows, and spreads through internal doors. Door leakage follows University of Hull laboratory tests of six UK external doors (2026): it rises with depth, from about 1,000 L/h per metre of width at 0.2 m to about 4,000 at 0.6 m, varying widely between doors. No domestic door gave way up to 0.6 m in those tests; non-domestic doors elsewhere have failed between about 0.7 and 2 m. No data were found for windows leaking or breaking, so they are watertight unless you set a breaking height. Barriers are treated as watertight up to their top; in practice they depend on fit and installation.</div>
+      </div>
       <div class="field" id="sewerField" hidden>
         <span class="lbl">Drainage network</span>
         <label class="chk"><input type="checkbox" name="sewer" id="sewerOn" checked> <span id="sewerN">Include the imported network</span></label>
@@ -1088,7 +1108,9 @@ function params(){
               slr:n('slr'), river_mode:fd.get('river_mode'), river_base:n('river_base'), river_peak:n('river_peak')} : {}),
           measures: MEAS.map(toBNG), use_measures: MEAS.length > 0 && $('useDef').checked,
           sewer: !!SEWER && fd.get('sewer') === 'on', sewer_cover: fd.get('sewer_cover'), sewer_gully_lps: n('sewer_gully_lps'),
-          sewer_cover_area: n('sewer_cover_area'), sewer_grate_area: n('sewer_grate_area'), sewer_chamber: n('sewer_chamber')};
+          sewer_cover_area: n('sewer_cover_area'), sewer_grate_area: n('sewer_grate_area'), sewer_chamber: n('sewer_chamber'),
+          bld_doors: fd.get('bld_doors'), bld_door_type: fd.get('bld_door_type'), bld_leak_06: n('bld_leak_06'), bld_door_fail: n('bld_door_fail'),
+          bld_barrier: n('bld_barrier'), bld_windows: fd.get('bld_windows'), bld_window_break: fd.get('bld_window_break') === '' ? null : n('bld_window_break')};
 }
 function buildRivers(){
   const list = S.inflows || [];
@@ -1802,6 +1824,7 @@ async function loadIfc(id){
   ifcLayer = L.layerGroup(IFCB.map(b => L.polygon(b.footprint, {color:'#5b3fa0', weight:2, fillColor:'#8f78c9', fillOpacity:.35})
     .bindTooltip(`IFC building: ${esc(b.name)}, floor ${fmtM(b.ffl)} AOD`))).addTo(map);
   $('ifcInfo').textContent = IFCB.length ? `IFC buildings: ${IFCB.length}` : 'No IFC buildings';
+  $('bldField').hidden = !IFCB.length;
   $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} door${b.doors===1?'':'s'} · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
   $('ifcList').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => removeIfc(x.dataset.rm));
 }
@@ -1924,7 +1947,10 @@ async function buildingTab(res){
 }
 function bldHtml(r){
   const k = reps_index(r), min = m => m == null ? '–' : (m >= 60 ? `${Math.floor(m/60)} h ${String(Math.round(m%60)).padStart(2,'0')} min` : `${Math.round(m)} min`);
-  const verdict = r.doors.some(d => d.margin != null && d.margin < 0) ? `<b style="color:#b3261e">Water rises above ${r.doors.filter(d => d.margin < 0).length} threshold(s)</b>`
+  const wetRooms = r.inside ? r.spaces.filter(s => s.max_depth > 0.02) : [];
+  const verdict = r.inside && wetRooms.length ? `<b style="color:#b3261e">Water gets inside: ${wetRooms.length} room${wetRooms.length > 1 ? 's' : ''}, up to ${Math.round(Math.max(...wetRooms.map(s => s.max_depth)) * 100)} cm</b>`
+    : r.inside && r.doors.some(d => d.margin != null && d.margin < 0) ? '<b style="color:#1d6b3a">Water rises above a threshold outside but stays out</b> with these door and window settings'
+    : r.doors.some(d => d.margin != null && d.margin < 0) ? `<b style="color:#b3261e">Water rises above ${r.doors.filter(d => d.margin < 0).length} threshold(s)</b>`
     : r.ffl_exceeded ? '<b style="color:#b3261e">Water rises above the finished floor level against the walls</b>'
     : r.doors.length ? `<b style="color:#1d6b3a">Water stays below every threshold</b> (closest: ${Math.round(Math.min(...r.doors.filter(d=>d.margin!=null).map(d => d.margin)) * 100)} cm)` : '';
   const chart = (() => {
@@ -1944,8 +1970,22 @@ function bldHtml(r){
   })();
   const doors = r.doors.length ? `<table class="rtable"><tr><td><b>Door</b></td><td>Threshold</td><td>Peak outside</td><td>Margin</td><td>Over for</td></tr>` +
     r.doors.map(d => `<tr><td>${esc(d.name)}${d.ground_above_sill ? ' <small style="color:#b3261e">(ground outside above it)</small>' : ''}</td><td>${fmtM(d.sill)}</td><td>${fmtM(d.peak_level)}</td><td style="color:${d.margin < 0 ? '#b3261e' : 'inherit'}">${d.margin == null ? '–' : (d.margin*100).toFixed(0) + ' cm'}</td><td>${d.minutes_over ? min(d.minutes_over) + ` from ${min(d.first_over_min)}` : '–'}</td></tr>`).join('') + '</table>' : '';
+  const insideHtml = (() => {
+    if(!r.inside) return null;
+    const rooms = r.spaces.filter(s => s.max_depth > 0.005);
+    if(!rooms.length) return '<div class="empty" style="margin-top:8px">No water inside.</div>';
+    const W_ = 520, H_ = 120, t = r.inside.times_min, hi = Math.max(0.05, ...rooms.map(s => s.max_depth)) * 1.1;
+    const X = i => 40 + i / Math.max(1, t.length - 1) * (W_ - 50), Y = v => H_ - 18 - v / hi * (H_ - 28), cols = ['#185f9e', '#b07a2a', '#5b3fa0', '#1d6b3a', '#b3261e'];
+    let g = `<svg class="bchart" viewBox="0 0 ${W_} ${H_}" role="img" aria-label="Water depth inside each room"><text x="2" y="12" font-size="10" fill="#555">depth</text><text x="2" y="${Y(hi / 1.1) + 4}" font-size="10" fill="#555">${Math.round(hi / 1.1 * 100)} cm</text>`;
+    rooms.forEach((s, i) => { const pts = s.series.map((v, j) => `${X(j).toFixed(1)},${Y(v).toFixed(1)}`).join(' '); g += `<polyline points="${pts}" fill="none" stroke="${cols[i % 5]}" stroke-width="2"/>`; });
+    g += `<text x="40" y="${H_ - 3}" font-size="10" fill="#555">0:00</text><text x="${W_ - 40}" y="${H_ - 3}" font-size="10" fill="#555">${min(t[t.length - 1])}</text></svg>`;
+    return `<div class="swh">Water inside</div>${g}<div style="font-size:12px;color:var(--muted)">` + rooms.map((s, i) => `<span style="color:${cols[i % 5]}">■</span> ${esc(s.name)} ${esc(s.use || '')}`).join(' · ') + '</div>' +
+      `<table class="rtable"><tr><td><b>Room</b></td><td>Area</td><td>Deepest</td><td>Wet from</td><td>For</td><td>Damage</td></tr>` +
+      r.spaces.filter(s => s.max_depth > 0.02).map(s => `<tr><td>${esc(s.name)} ${esc(s.use || '')}</td><td>${s.area} m²</td><td>${Math.round(s.max_depth * 100)} cm</td><td>${min(s.first_wet_min)}</td><td>${min(s.minutes_wet)}</td><td>${fmtEur(s.damage_eur)}</td></tr>`).join('') +
+      `<tr><td><b>Indicative damage</b></td><td></td><td></td><td></td><td></td><td><b>${fmtEur(r.damage_eur)}</b></td></tr></table>`;
+  })();
   const sp = r.spaces.filter(s => s.depth_if_entered > 0);
-  const spaces = sp.length ? `<div class="swh">Spaces that would take water if it got in</div><table class="rtable">` + sp.map(s => `<tr><td>${esc(s.name)} ${esc(s.use || '')}</td><td>${s.area} m²</td><td>${fmtM(s.depth_if_entered)} deep</td><td>${fmtEur(s.damage_eur)}</td></tr>`).join('') +
+  const spaces = insideHtml != null ? insideHtml : sp.length ? `<div class="swh">Spaces that would take water if it got in</div><table class="rtable">` + sp.map(s => `<tr><td>${esc(s.name)} ${esc(s.use || '')}</td><td>${s.area} m²</td><td>${fmtM(s.depth_if_entered)} deep</td><td>${fmtEur(s.damage_eur)}</td></tr>`).join('') +
     `<tr><td><b>Indicative damage</b></td><td></td><td></td><td><b>${fmtEur(r.damage_eur)}</b></td></tr></table>` : '<div class="empty" style="margin-top:8px">No space below the peak water level outside.</div>';
   return `<div class="bhead"><b>${esc(r.name)}</b><button class="linkbtn" data-focus="${k}">Show in 3D</button></div>
     <div style="font-size:13.5px;margin-bottom:6px">${verdict}</div>
