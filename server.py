@@ -60,8 +60,9 @@ def _bld_ring(A, k):
 
 
 def api_current_kind():
-    """A run or an area preparation in progress (the model mustn't be rebuilt under it)."""
-    return JOB.get("kind")
+    """The kind of job still running (a run or an area preparation), else None: the model mustn't be rebuilt under
+    it. JOB keeps the last job's kind after it ends, so ask whether its process is still alive."""
+    return JOB.get("kind") if busy() else None
 
 
 class Handler(BaseHTTPRequestHandler):
