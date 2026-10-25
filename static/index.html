@@ -239,7 +239,10 @@ label.chk.big{font-size:14px;color:var(--ink)}
     <label class="chk"><input type="checkbox" id="treesOn" checked> Trees</label>
     <button type="button" class="ghost sm" id="defBtn" aria-expanded="false">Defences</button>
     <button type="button" class="linkbtn" id="resetV">Reset</button>
+    <label class="unit" id="gotoWrap" style="display:flex;gap:6px;align-items:center" hidden>Go to
+      <select class="num" id="goto3d" style="width:auto;max-width:170px;padding:4px 6px;font-size:13px" aria-label="Go to a building"></select></label>
   </div>
+  <div class="v3note" id="v3hint" style="font-size:11.5px" hidden>Drag to rotate · right-drag, Shift-drag or arrow keys to move · wheel to zoom where you point</div>
   <div class="v3note" id="v3note"></div>
 </div>
 
@@ -738,7 +741,7 @@ function setView(v){
   if(v === '3d' && (mapOnly || !(window.V3 && V3.scene))) v = 'map';
   view = v;
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
-  $('view3d').hidden = v !== '3d'; $('v3tools').hidden = v !== '3d';
+  $('view3d').hidden = v !== '3d'; $('v3tools').hidden = v !== '3d'; $('v3hint').hidden = v !== '3d';
   document.body.classList.toggle('in3d', v === '3d');
   if(window.V3) V3.show(v === '3d');
   $('defBtn').hidden = v !== '3d'; if(v !== '3d'){ $('defPanel').hidden = true; if(typeof cancelDef === 'function' && draft) cancelDef(); }
@@ -1825,9 +1828,18 @@ async function loadIfc(id){
     .bindTooltip(`IFC building: ${esc(b.name)}, floor ${fmtM(b.ffl)} AOD`))).addTo(map);
   $('ifcInfo').textContent = IFCB.length ? `IFC buildings: ${IFCB.length}` : 'No IFC buildings';
   $('bldField').hidden = !IFCB.length;
-  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} door${b.doors===1?'':'s'} · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
+  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} outside door${b.doors===1?'':'s'} · <button class="linkbtn" data-show="${b.id}">Show in 3D</button> · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
   $('ifcList').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => removeIfc(x.dataset.rm));
+  $('ifcList').querySelectorAll('[data-show]').forEach(x => x.onclick = () => show3dBuilding(x.dataset.show));
+  $('goto3d').innerHTML = '<option value="">Whole area</option>' + IFCB.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  $('gotoWrap').hidden = !IFCB.length;
 }
+function show3dBuilding(bid){                                          // the scene may still be (re)building: retry briefly
+  setView('3d'); let n = 0;
+  const go = () => { if(window.V3 && V3.focusIfc && V3.focusIfc(bid)) { $('goto3d').value = bid; return; } if(++n < 40) setTimeout(go, 500); };
+  go();
+}
+$('goto3d').onchange = e => { if(e.target.value) show3dBuilding(e.target.value); else $('resetV').click(); };
 async function removeIfc(bid){
   if(!confirm('Remove this building? The mapped buildings come back and the model is rebuilt.')) return;
   const r = await fetch(`/api/ifc/${AREA.id}/remove`, {method:'POST', body:JSON.stringify({id:bid})}); const d = await r.json();
@@ -1942,8 +1954,7 @@ async function buildingTab(res){
   const reps = await Promise.all(IFCB.map(b => fetch(`/api/ifcreport/${res.run}/${b.id}`).then(r => r.json()).catch(() => ({error:'failed'}))));
   $('bldPanel').innerHTML = reps.map((r, k) => r.error ? `<div class="bhead"><b>${esc(IFCB[k].name)}</b></div><div class="empty">${esc(r.error)}</div>` : bldHtml(r)).join('<hr>');
   $('bldPanel').querySelectorAll('[data-focus]').forEach(x => x.onclick = () => {
-    const r = reps[+x.dataset.focus]; $('dlgRes').close(); setView('3d');
-    setTimeout(() => window.V3 && V3.focus && V3.focus(r.local[0], r.local[1], r.ground_min || r.ffl, 9), 400); });
+    const r = reps[+x.dataset.focus]; $('dlgRes').close(); show3dBuilding(r.id); });
 }
 function bldHtml(r){
   const k = reps_index(r), min = m => m == null ? '–' : (m >= 60 ? `${Math.floor(m/60)} h ${String(Math.round(m%60)).padStart(2,'0')} min` : `${Math.round(m)} min`);

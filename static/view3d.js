@@ -36,7 +36,7 @@ window.V3 = (() => {
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 20000);   // depth range fitted to the scene in placeCamera()
     controls(renderer.domElement);
     addEventListener('resize', resize); resize();
-    (function loop() { requestAnimationFrame(loop); if (active) renderer.render(scene, camera); })();
+    (function loop() { requestAnimationFrame(loop); if (active) { renderer.render(scene, camera); placeLabels(); } })();
   }
   function resize() {
     if (!renderer || !el3d) return;
@@ -54,6 +54,10 @@ window.V3 = (() => {
     const off = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(r);
     camera.position.copy(target).add(off); camera.lookAt(target);
   }
+  function panBy(dxw, dyw) {                                          // move the view across the ground (world metres on screen)
+    const right = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az)), fwd = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az));
+    target.addScaledVector(right, dxw).addScaledVector(fwd, dyw / Math.max(Math.sin(el), 0.3)); placeCamera();
+  }
   function controls(dom) {
     let drag = null;
     dom.addEventListener('pointerdown', e => { drag = {x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey}; dom.setPointerCapture(e.pointerId); });
@@ -62,8 +66,8 @@ window.V3 = (() => {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
       if (drag.pan) {
         const s = (camera.top - camera.bottom) / (el3d.clientHeight || innerHeight);
-        const right = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az)), fwd = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az));
-        target.addScaledVector(right, -dx * s).addScaledVector(fwd, dy * s / Math.max(Math.sin(el), 0.3));
+        panBy(-dx * s, dy * s);
+        return;
       } else { az -= dx * 0.006; el = Math.max(0.2, Math.min(1.35, el + dy * 0.004)); }
       placeCamera();
     });
@@ -75,7 +79,22 @@ window.V3 = (() => {
     });
     dom.addEventListener('dblclick', e => { if (picker) picker(null, e); });
     dom.addEventListener('contextmenu', e => e.preventDefault());
-    dom.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(12, zoom * Math.exp(-e.deltaY * 0.0012))); placeCamera(); }, {passive: false});
+    dom.addEventListener('wheel', e => {                              // zoom towards the point under the cursor
+      e.preventDefault();
+      const z1 = Math.max(0.4, Math.min(30, zoom * Math.exp(-e.deltaY * 0.0012))), r = dom.getBoundingClientRect();
+      const nx = (e.clientX - r.left) / r.width * 2 - 1, ny = -((e.clientY - r.top) / r.height * 2 - 1);
+      camera.updateMatrixWorld();
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const p = target.clone().addScaledVector(right, nx * camera.right).addScaledVector(up, ny * camera.top);
+      target.copy(p.clone().add(target.clone().sub(p).multiplyScalar(zoom / z1)));
+      zoom = z1; placeCamera();
+    }, {passive: false});
+    addEventListener('keydown', e => {                                // arrow keys move the view
+      if (!active || /INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '') || document.querySelector('dialog[open]')) return;
+      const k = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1]}[e.key];
+      if (!k) return;
+      e.preventDefault(); panBy(k[0] * camera.right * 0.15, k[1] * camera.top * 0.15);
+    });
   }
 
   function build(sc) {
@@ -175,8 +194,32 @@ window.V3 = (() => {
   let ifcGroup = null;
   const IFC_COL = {IfcWall: 0xd9d2c5, IfcWallStandardCase: 0xd9d2c5, IfcCurtainWall: 0x9fb8c8, IfcSlab: 0xa9a49b,
                    IfcRoof: 0x7a6f66, IfcDoor: 0x8a5a2b, IfcColumn: 0xbdb6aa};
+  let labels = [], labelBox = null, pins = [];
+  const pinScale = () => 1 / Math.max(1, zoom / 1.2);                 // pins keep about the same size on screen
+  function placeLabels() {                                            // HTML name labels follow their pins
+    if (!labels.length || !camera) return;
+    const k = pinScale();
+    for (const g of pins) g.scale.setScalar(k);
+    for (const L_ of labels) L_.at.copy(L_.base).setY(L_.base.y + L_.rise * k);
+    const r = el3d.getBoundingClientRect();
+    for (const L_ of labels) {
+      const v = L_.at.clone().project(camera);
+      const off = v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05;
+      L_.el.style.display = off ? 'none' : '';
+      if (!off) L_.el.style.transform = `translate(${(v.x + 1) / 2 * r.width}px, ${(1 - v.y) / 2 * r.height}px) translate(-50%, -100%)`;
+    }
+  }
+  function focusIfc(id, z) {
+    const b = (S3 && S3.ifc || []).find(x => x.id === id); if (!b) return false;
+    let sx = 0, sz = 0, n = 0;
+    for (const p of b.parts) for (let k = 0; k < p.v.length; k += 3) { sx += p.v[k]; sz += p.v[k + 2]; n++; }
+    if (!n) return false;
+    target.set(sx / n - W / 2, ex * b.base - zmid0, sz / n - D / 2); zoom = z || 7; placeCamera(); return true;
+  }
   function buildIfc() {
     if (!S3) return;
+    for (const L_ of labels) L_.el.remove(); labels = []; pins = [];
+    if (!labelBox) { labelBox = document.createElement('div'); labelBox.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden'; el3d.appendChild(labelBox); }
     if (ifcGroup) scene.remove(ifcGroup);
     ifcGroup = new THREE.Group(); ifcGroup.position.set(-W / 2, 0, -D / 2); scene.add(ifcGroup);
     for (const b of S3.ifc || []) {
@@ -189,6 +232,22 @@ window.V3 = (() => {
         const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: IFC_COL[p.c] || 0xc8c2b8, side: THREE.DoubleSide}));
         mesh.userData.ifc = b.id; ifcGroup.add(mesh);
       }
+      // a tall pin above the building and its name, so it can be found at any zoom
+      let sx = 0, sz = 0, top = -1e9, n = 0;
+      for (const p of b.parts) for (let k = 0; k < p.v.length; k += 3) { sx += p.v[k]; sz += p.v[k + 2]; top = Math.max(top, p.v[k + 1]); n++; }
+      if (!n) continue;
+      const cx = sx / n, cz = sz / n, ytop = top + dy, ps = Math.max(W, D) / 45;
+      const pinG = new THREE.Group(); pinG.position.set(cx, ytop, cz); ifcGroup.add(pinG); pins.push(pinG);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(ps * 0.04, ps * 0.04, ps * 1.6, 8), new THREE.MeshLambertMaterial({color: 0x5b3fa0}));
+      stem.position.set(0, ps * 0.8, 0); pinG.add(stem);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(ps * 0.35, ps * 0.7, 16), new THREE.MeshLambertMaterial({color: 0x7d5fd0}));
+      head.rotation.x = Math.PI; head.position.set(0, ps * 1.6 + ps * 0.35, 0); pinG.add(head);
+      const el = document.createElement('button'); el.type = 'button'; el.textContent = b.name || 'IFC building';
+      el.title = 'Zoom to this building';
+      el.style.cssText = 'position:absolute;left:0;top:0;pointer-events:auto;background:#5b3fa0;color:#fff;border:0;border-radius:6px;padding:3px 8px;font:600 12px/1.3 system-ui,sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)';
+      el.onclick = () => focusIfc(b.id);
+      labelBox.appendChild(el);
+      labels.push({el, base: new THREE.Vector3(cx - W / 2, ytop, cz - D / 2), rise: ps * 2.4, at: new THREE.Vector3()});
     }
   }
 
@@ -381,6 +440,8 @@ window.V3 = (() => {
     init, build, setResult,
     setFrame(k) { frame = k; if (layer === 'time') redraw(); },
     setLayer(l) { layer = l; redraw(); },
+    focusIfc(id, z) { return focusIfc(id, z); },
+    ifcList() { return (S3 && S3.ifc || []).map(b => ({id: b.id, name: b.name})); },
     focus(lx, lz, base, z) {                                          // centre on a point (local metres), e.g. a building
       if (!target) return; target.set(lx - W / 2, ex * base - zmid0, lz - D / 2); if (z) zoom = z; placeCamera();
       if (typeof requestRender === 'function') requestRender(); else if (renderer && scene && camera) renderer.render(scene, camera);

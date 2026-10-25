@@ -241,7 +241,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._send(404, {"error": str(e)})
             return self._send(200, [dict(id=b["id"], name=b.get("name"), ffl=b.get("ffl"), area=b.get("area"),
-                                         doors=len(b.get("doors", [])), spaces=len(b.get("spaces", [])), footprint=_ll(b["footprint"]))
+                                         doors=sum(1 for d in b.get("doors", []) if d.get("kind", "external") == "external"),
+                                         spaces=len(b.get("spaces", [])), footprint=_ll(b["footprint"]))
                                     for b in ifcbuilding.load_all(A)])
         if p.startswith("/api/buildingsnear/"):                     # mapped outlines around a point, as a placement guide
             from urllib.parse import urlparse, parse_qs
