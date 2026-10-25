@@ -91,6 +91,11 @@ select.num{width:auto}
 .swi small{display:block;color:var(--muted);margin-top:3px;word-break:break-word}
 .swi label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
 .swi label input{margin-top:3px}
+#ifcbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1200;background:#fff;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.18);padding:12px 16px;display:flex;gap:14px;align-items:center;font-size:13.5px}
+#ifcbar input[type=range]{width:180px}
+.placing #map{cursor:move}
+.bchart{width:100%;height:150px;display:block;margin:6px 0 10px}
+.bhead{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0}
 .actions .primary{width:auto;margin:0;padding:10px 18px}
 
 .bar{height:10px;border-radius:6px;background:#e3eaeb;overflow:hidden;margin:18px 0 10px}
@@ -249,6 +254,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
   <div class="sewrow"><span id="sewerInfo">No drainage network</span>
     <label class="chk" id="sewerShowWrap" hidden><input type="checkbox" id="sewerShow" checked> Show</label>
     <button class="linkbtn" id="sewerBtn">Import drainage</button></div>
+  <div class="sewrow"><span id="ifcInfo">No IFC buildings</span>
+    <button class="linkbtn" id="ifcBtn">Add IFC building</button></div>
+  <div id="ifcList" style="font-size:12px;color:var(--muted);margin:-6px 0 10px"></div>
   <p class="runname" id="runname">Loading…</p>
   <dl id="stats"></dl>
   <div class="seg" role="group" aria-label="Map layer">
@@ -518,6 +526,31 @@ label.chk.big{font-size:14px;color:var(--ink)}
   </div>
 </dialog>
 
+<dialog id="dlgIfc" aria-labelledby="ifcTitle">
+  <div class="dlg">
+    <h2 id="ifcTitle">IFC building</h2>
+    <p class="sub">Add a building from an IFC model (IFC2x3 or IFC4). Its footprint replaces the mapped buildings it overlaps, its doors and floor level are checked against the water, and it shows in 3D. A georeferenced model (IfcMapConversion to British National Grid) lands in place; otherwise you place it on the map.</p>
+    <div class="field"><input type="file" id="ifcFile" accept=".ifc" aria-label="IFC file"></div>
+    <div class="swgrid" id="ifcFields" hidden>
+      <span>Name</span><input id="ifcName" class="num" style="width:100%;text-align:left">
+      <span>Position</span><span><span id="ifcPos"></span> <button type="button" class="linkbtn" id="ifcPlace">Place on the map</button></span>
+      <span>Finished floor level</span><span class="inline"><input id="ifcFfl" class="num" type="number" step="0.01" style="width:100px" placeholder="from file"><span class="unit">m AOD</span></span>
+    </div>
+    <div id="ifcReport"></div>
+    <div id="ifcMsg"></div>
+    <div class="actions">
+      <button type="button" class="ghost" id="ifcClose">Close</button>
+      <button type="button" class="primary" id="ifcImport" hidden disabled>Add building</button>
+    </div>
+  </div>
+</dialog>
+<div id="ifcbar" hidden>
+  <span>Drag the outline to move it. Rotate:</span>
+  <input type="range" id="ifcRot" min="0" max="359" step="1" value="0" aria-label="Rotation in degrees"><span id="ifcRotV">0°</span>
+  <button type="button" class="ghost" id="ifcBarCancel">Cancel</button>
+  <button type="button" class="primary" id="ifcBarDone" style="width:auto;padding:8px 16px">Done</button>
+</div>
+
 <dialog id="dlgRun" aria-labelledby="runTitle">
   <div class="dlg">
     <h2 id="runTitle">Running your scenario</h2>
@@ -553,6 +586,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <button type="button" role="tab" data-rtab="impact" aria-selected="false">Impacts</button>
       <button type="button" role="tab" data-rtab="cost" aria-selected="false">Costs</button>
       <button type="button" role="tab" data-rtab="checks" aria-selected="false">Checks</button>
+      <button type="button" role="tab" data-rtab="building" aria-selected="false" id="rtabBuilding" hidden>Building</button>
     </div>
     <div class="rpanel" data-rpanel="water" role="tabpanel">
       <div class="res">
@@ -577,6 +611,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
         for example an exchange rate and inflation to today's pounds; with a factor other than 1, figures are in your units.</p>
       <p class="note">Damage: JRC global flood depth-damage functions (Huizinga, de Moel and Szewczyk 2017, doi:10.2760/16510), European curves and UK maximum damage values per m² of building, in euros at 2010 prices, using the water depth beside each building. Defence costs are the ones you enter in the Defences panel. One storm only, not an annual average: indicative, not a full appraisal.</p>
     </div>
+    <div class="rpanel" data-rpanel="building" role="tabpanel" hidden><div id="bldPanel"></div></div>
     <div class="rpanel" data-rpanel="checks" role="tabpanel" hidden>
       <p class="note">Compare this run with the Environment Agency's national Risk of Flooding from Surface Water map (England). The map shows the chance of flooding in any year, not one storm, so expect partial agreement.</p>
       <div class="unit" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -747,7 +782,7 @@ async function openArea(id){
     if(!isBase){ $('showResults').hidden = false; }
   } else clearResult();
   fit();
-  loadSewer(id);
+  loadSewer(id); loadIfc(id);
   sceneFor = null; loadScene(id);
 }
 $('areaSel').onchange = e => openArea(e.target.value);
@@ -1530,6 +1565,7 @@ $('videoRes').onclick = () => { $('dlgRes').close(); makeVideo(); };
 /* ---------------- results ---------------- */
 function showResults(res){
   if(!$('dlgRes').open) fillRefs();
+  buildingTab(res);
   const s = res.stats, b = CMP ? CMP.stats : null, culv = s.culvert_depth != null;
   $('resDesc').textContent = describe(res.params) + `. Computed in ${s.runtime_s} s over ${s.cells.toLocaleString()} cells.`;
   $('thShade').src = S.shade; $('thDepth').src = res.maxd;
@@ -1756,6 +1792,169 @@ function sewStatus(){
   else swMsg('Ready to import.');
 }
 $('sewImport').onclick = () => runCheck(true);
+
+/* ---------------- IFC buildings ---------------- */
+let IFCB = [], ifcLayer = null, ifcPrev = null, IFCD = null, IFCPL = null, IFCLOCAL = null, IFCFFL = null;
+const fmtM = v => v == null ? '–' : (+v).toFixed(2) + ' m';
+async function loadIfc(id){
+  try { IFCB = await fetch('/api/ifc/' + id).then(r => r.json()); } catch(e){ IFCB = []; }
+  if(ifcLayer){ ifcLayer.remove(); ifcLayer = null; }
+  ifcLayer = L.layerGroup(IFCB.map(b => L.polygon(b.footprint, {color:'#5b3fa0', weight:2, fillColor:'#8f78c9', fillOpacity:.35})
+    .bindTooltip(`IFC building: ${esc(b.name)}, floor ${fmtM(b.ffl)} AOD`))).addTo(map);
+  $('ifcInfo').textContent = IFCB.length ? `IFC buildings: ${IFCB.length}` : 'No IFC buildings';
+  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} door${b.doors===1?'':'s'} · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
+  $('ifcList').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => removeIfc(x.dataset.rm));
+}
+async function removeIfc(bid){
+  if(!confirm('Remove this building? The mapped buildings come back and the model is rebuilt.')) return;
+  const r = await fetch(`/api/ifc/${AREA.id}/remove`, {method:'POST', body:JSON.stringify({id:bid})}); const d = await r.json();
+  if(!r.ok){ alert(d.error); return; }
+  loadIfc(AREA.id); sceneFor = null; loadScene(AREA.id);
+}
+function ifcMsg(t, cls){ $('ifcMsg').innerHTML = t ? `<div class="msg ${cls||''}">${t}</div>` : ''; }
+function clearPreview(){ if(ifcPrev){ ifcPrev.remove(); ifcPrev = null; } }
+function openIfc(pl){
+  IFCPL = pl || null; IFCD = null; IFCLOCAL = null; IFCFFL = null; clearPreview();
+  $('ifcFile').value = ''; $('ifcFields').hidden = true; $('ifcReport').innerHTML = ''; ifcMsg('');
+  $('ifcImport').hidden = true; $('ifcFfl').value = ''; $('dlgIfc').showModal();
+}
+$('ifcBtn').onclick = () => openIfc();
+$('ifcClose').onclick = () => { $('dlgIfc').close(); clearPreview(); };
+$('ifcFile').onchange = async () => {
+  const f = $('ifcFile').files[0]; if(!f) return;
+  ifcMsg('Reading the model…'); $('ifcReport').innerHTML = '';
+  const r = await fetch(`/api/ifc/${AREA.id}/upload?name=${encodeURIComponent(f.name)}`, {method:'POST', body:f}); const d = await r.json();
+  if(!r.ok){ ifcMsg(esc(d.error), 'err'); return; }
+  $('ifcName').value = f.name.replace(/\.ifc$/i, ''); $('ifcFields').hidden = false;
+  if(d.status === 'needs_placement' && IFCPL) return ifcCheck();        // a building was clicked: start there
+  renderIfc(d);
+};
+async function ifcCheck(save){
+  const accept = [...document.querySelectorAll('#ifcReport input[data-fix]:checked')].map(x => x.dataset.fix);
+  const ffl = $('ifcFfl').value;
+  ifcMsg(save ? 'Adding the building and rebuilding the model…' : 'Checking…');
+  const r = await fetch(`/api/ifc/${AREA.id}/${save ? 'save' : 'check'}`, {method:'POST',
+    body:JSON.stringify({placement:IFCPL, accept, ffl:ffl === '' ? null : +ffl, name:$('ifcName').value})});
+  const d = await r.json();
+  if(!r.ok){ ifcMsg(esc(d.error), 'err'); return; }
+  if(d.saved){ $('dlgIfc').close(); clearPreview(); loadIfc(AREA.id); sceneFor = null; loadScene(AREA.id); return; }
+  renderIfc(d, accept);
+}
+function renderIfc(d, accept=[]){
+  IFCD = d; if(d.local) IFCLOCAL = d.local;
+  const E = d.issues.filter(i => i.sev === 'error' && i.code !== 'E_PLACE'), F = d.issues.filter(i => i.sev === 'fix'), W = d.issues.filter(i => i.sev === 'warn');
+  const ids = i => i.ids.length ? `<small>${i.ids.map(esc).join(', ')}</small>` : '';
+  let h = '';
+  if(d.preview){ const p = d.preview; h += `<div class="swh">Found</div><div style="font-size:13px">Footprint ${p.area} m², ${p.storeys.length} storey${p.storeys.length===1?'':'s'}, ${p.doors.length} door${p.doors.length===1?'':'s'}, ${p.spaces} space${p.spaces===1?'':'s'}. Finished floor ${fmtM(p.ffl)} AOD; lowest ground beside it ${fmtM(p.ground_min)}.</div>`; }
+  if(E.length) h += `<div class="swh">Must be corrected in the authoring tool</div>` + E.map(i => `<div class="swi e"><b>${esc(i.title)}</b>${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${ids(i)}</div>`).join('');
+  if(F.length) h += `<div class="swh">The app can repair these. Tick each repair you accept</div>` + F.map(i => `<div class="swi f"><label><input type="checkbox" data-fix="${i.code}"${accept.includes(i.code) ? ' checked' : ''}><span><b>${esc(i.title)}</b><small>Repair: ${esc(i.fix)}${i.detail ? ' ' + esc(i.detail) : ''}</small>${ids(i)}</span></label></div>`).join('');
+  if(W.length) h += `<div class="swh">Noted</div>` + W.map(i => `<div class="swi"><b>${esc(i.title)}</b>${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${ids(i)}</div>`).join('');
+  $('ifcReport').innerHTML = h;
+  $('ifcReport').querySelectorAll('input[data-fix]').forEach(x => x.onchange = () => ifcCheck());
+  const needs = d.status === 'needs_placement';
+  $('ifcPos').textContent = needs ? 'not georeferenced: place it on the map' : IFCPL ? 'placed on the map' : 'from the file\u2019s georeferencing';
+  $('ifcPlace').textContent = needs ? 'Place on the map' : 'Adjust on the map';
+  clearPreview();
+  if(d.preview){
+    const p = d.preview;
+    ifcPrev = L.layerGroup([...p.replaces.map(r => L.polygon(r, {color:'#b3261e', weight:1.5, fillOpacity:.35, dashArray:'3 3'})),
+      L.polygon(p.footprint, {color:'#5b3fa0', weight:2.5, fillColor:'#8f78c9', fillOpacity:.45}),
+      ...p.doors.map(x => L.circleMarker(x.ll, {radius:4, color:'#fff', weight:1.5, fillColor:'#8a5a2b', fillOpacity:1}).bindTooltip(`${esc(x.name)}: threshold ${fmtM(x.sill)} AOD`))]).addTo(map);
+  }
+  $('ifcImport').hidden = false;
+  const open = [...document.querySelectorAll('#ifcReport input[data-fix]')].filter(x => !x.checked).length;
+  $('ifcImport').disabled = d.status !== 'ok';
+  if(needs) ifcMsg('Place the building on the map to continue.', 'warn');
+  else if(E.length) ifcMsg('Import stopped. Correct the items in red in the authoring tool and export again.', 'err');
+  else if(open) ifcMsg(`Accept the ${open > 1 ? open + ' repairs' : 'repair'}, or type the finished floor level, to continue.`, 'warn');
+  else ifcMsg(d.preview && d.preview.replaces.length ? `Ready. It replaces ${d.preview.replaces.length} mapped building${d.preview.replaces.length>1?'s':''} (red).` : 'Ready.');
+}
+$('ifcFfl').onchange = () => ifcCheck();
+$('ifcImport').onclick = () => ifcCheck(true);
+/* placement: drag the outline, rotate with the slider */
+let placeShape = null, placeGuide = null, placeC = null, placeRot = 0, placeDrag = false;
+function shapeAt(){
+  const lat0 = placeC.lat * Math.PI / 180, a = placeRot * Math.PI / 180;
+  return IFCLOCAL.footprint.map(([x, y]) => { const e = x * Math.cos(a) - y * Math.sin(a), n = x * Math.sin(a) + y * Math.cos(a);
+    return [placeC.lat + n / 110574, placeC.lng + e / (111320 * Math.cos(lat0))]; });
+}
+function drawPlace(){ placeShape.setLatLngs(shapeAt()); $('ifcRotV').textContent = placeRot + '°'; }
+$('ifcPlace').onclick = async () => {
+  if(!IFCLOCAL){ ifcMsg('Read the model first.', 'warn'); return; }
+  $('dlgIfc').close(); clearPreview(); setView('map');
+  placeC = IFCPL && IFCPL.lat ? L.latLng(IFCPL.lat, IFCPL.lng) : (IFCD && IFCD.preview ? L.latLng(IFCD.preview.centre) : map.getCenter());
+  placeRot = IFCPL ? Math.round(IFCPL.rot || 0) : (IFCD && IFCD.preview ? Math.round(IFCD.preview.rot || 0) : 0); $('ifcRot').value = placeRot;
+  try {                                                                // mapped buildings around it, as a guide
+    const near = await fetch(`/api/buildingsnear/${AREA.id}?lat=${placeC.lat}&lng=${placeC.lng}&r=250`).then(r => r.json());
+    placeGuide = L.layerGroup(near.map(r => L.polygon(r, {color:'#6b6b6b', weight:1, fillColor:'#9a9a9a', fillOpacity:.25, interactive:false}))).addTo(map);
+  } catch(_){}
+  placeShape = L.polygon(shapeAt(), {color:'#5b3fa0', weight:2.5, fillColor:'#8f78c9', fillOpacity:.5}).addTo(map);
+  placeShape.on('mousedown', e => { placeDrag = true; map.dragging.disable(); L.DomEvent.stop(e); });
+  map.on('mousemove', placeMove); map.on('mouseup', placeUp);
+  document.body.classList.add('placing'); $('ifcbar').hidden = false; drawPlace();
+};
+function placeMove(e){ if(!placeDrag) return; placeC = e.latlng; drawPlace(); }
+function placeUp(){ if(placeDrag){ placeDrag = false; map.dragging.enable(); } }
+function endPlace(){ map.off('mousemove', placeMove); map.off('mouseup', placeUp); if(placeShape){ placeShape.remove(); placeShape = null; }
+  if(placeGuide){ placeGuide.remove(); placeGuide = null; }
+  document.body.classList.remove('placing'); $('ifcbar').hidden = true; }
+$('ifcRot').oninput = e => { placeRot = +e.target.value; drawPlace(); };
+$('ifcBarCancel').onclick = () => { endPlace(); $('dlgIfc').showModal(); if(IFCD) renderIfc(IFCD); };
+$('ifcBarDone').onclick = () => { IFCPL = {lat:placeC.lat, lng:placeC.lng, rot:placeRot}; endPlace(); $('dlgIfc').showModal(); ifcCheck(); };
+/* click a building: a small card with the IFC option */
+map.on('click', async e => {
+  if(['drawing', 'picking', 'placing'].some(c => document.body.classList.contains(c)) || !AREA || view !== 'map' || document.querySelector('dialog[open]')) return;
+  let b; try { b = await fetch(`/api/buildingat/${AREA.id}?lat=${e.latlng.lat}&lng=${e.latlng.lng}`).then(r => r.json()); } catch(_){ return; }
+  if(!b || b.none || b.error) return;
+  const div = document.createElement('div'); div.style.fontSize = '13px';
+  div.innerHTML = b.ifc ? `<b>IFC building</b><br>${esc(b.name || '')}, ${b.area} m²`
+    : `<b>Building</b><br>${b.area} m², ${esc(b.type)}${b.name ? ', ' + esc(b.name) : ''}<br><button class="linkbtn" style="margin-top:6px">Replace with an IFC model</button>`;
+  const pop = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
+  const btn = div.querySelector('button');
+  if(btn) btn.onclick = () => { map.closePopup(pop); openIfc({lat:e.latlng.lat, lng:e.latlng.lng, rot:0}); };
+});
+/* results: the building tab */
+async function buildingTab(res){
+  const tab = $('rtabBuilding'); tab.hidden = !IFCB.length; if(!IFCB.length || !res || !res.run) return;
+  const reps = await Promise.all(IFCB.map(b => fetch(`/api/ifcreport/${res.run}/${b.id}`).then(r => r.json()).catch(() => ({error:'failed'}))));
+  $('bldPanel').innerHTML = reps.map((r, k) => r.error ? `<div class="bhead"><b>${esc(IFCB[k].name)}</b></div><div class="empty">${esc(r.error)}</div>` : bldHtml(r)).join('<hr>');
+  $('bldPanel').querySelectorAll('[data-focus]').forEach(x => x.onclick = () => {
+    const r = reps[+x.dataset.focus]; $('dlgRes').close(); setView('3d');
+    setTimeout(() => window.V3 && V3.focus && V3.focus(r.local[0], r.local[1], r.ground_min || r.ffl, 9), 400); });
+}
+function bldHtml(r){
+  const k = reps_index(r), min = m => m == null ? '–' : (m >= 60 ? `${Math.floor(m/60)} h ${String(Math.round(m%60)).padStart(2,'0')} min` : `${Math.round(m)} min`);
+  const verdict = r.doors.some(d => d.margin != null && d.margin < 0) ? `<b style="color:#b3261e">Water rises above ${r.doors.filter(d => d.margin < 0).length} threshold(s)</b>`
+    : r.ffl_exceeded ? '<b style="color:#b3261e">Water rises above the finished floor level against the walls</b>'
+    : r.doors.length ? `<b style="color:#1d6b3a">Water stays below every threshold</b> (closest: ${Math.round(Math.min(...r.doors.filter(d=>d.margin!=null).map(d => d.margin)) * 100)} cm)` : '';
+  const chart = (() => {
+    const W_ = 520, H_ = 140, t = r.times_min, all = r.doors.flatMap(d => [d.sill, ...d.series.filter(v => v != null)]).concat(r.ffl ?? []);
+    if(!all.length) return '';
+    const lo = Math.min(...all) - 0.1, hi = Math.max(...all) + 0.1, X = i => 40 + i / (t.length - 1) * (W_ - 50), Y = v => H_ - 20 - (v - lo) / (hi - lo) * (H_ - 30);
+    const cols = ['#185f9e', '#b07a2a', '#5b3fa0', '#1d6b3a'];
+    let g = `<svg class="bchart" viewBox="0 0 ${W_} ${H_}" role="img" aria-label="Water level at each door against its threshold">`;
+    g += `<text x="2" y="12" font-size="10" fill="#555">m AOD</text><text x="2" y="${Y(hi-0.1)+4}" font-size="10" fill="#555">${(hi-0.1).toFixed(2)}</text><text x="2" y="${Y(lo+0.1)+4}" font-size="10" fill="#555">${(lo+0.1).toFixed(2)}</text>`;
+    r.doors.forEach((d, i) => {
+      g += `<line x1="40" x2="${W_-10}" y1="${Y(d.sill)}" y2="${Y(d.sill)}" stroke="${cols[i%4]}" stroke-dasharray="4 3" stroke-width="1"/>`;
+      const pts = d.series.map((v, j) => v == null ? null : `${X(j).toFixed(1)},${Y(v).toFixed(1)}`).filter(Boolean).join(' ');
+      if(pts) g += `<polyline points="${pts}" fill="none" stroke="${cols[i%4]}" stroke-width="2"/>`;
+    });
+    g += `<text x="40" y="${H_-4}" font-size="10" fill="#555">0:00</text><text x="${W_-40}" y="${H_-4}" font-size="10" fill="#555">${min(t[t.length-1])}</text></svg>`;
+    return g + `<div style="font-size:12px;color:var(--muted)">Lines: water level outside each door; dashed: its threshold. ` + r.doors.map((d, i) => `<span style="color:${cols[i%4]}">■</span> ${esc(d.name)}`).join(' · ') + '</div>';
+  })();
+  const doors = r.doors.length ? `<table class="rtable"><tr><td><b>Door</b></td><td>Threshold</td><td>Peak outside</td><td>Margin</td><td>Over for</td></tr>` +
+    r.doors.map(d => `<tr><td>${esc(d.name)}${d.ground_above_sill ? ' <small style="color:#b3261e">(ground outside above it)</small>' : ''}</td><td>${fmtM(d.sill)}</td><td>${fmtM(d.peak_level)}</td><td style="color:${d.margin < 0 ? '#b3261e' : 'inherit'}">${d.margin == null ? '–' : (d.margin*100).toFixed(0) + ' cm'}</td><td>${d.minutes_over ? min(d.minutes_over) + ` from ${min(d.first_over_min)}` : '–'}</td></tr>`).join('') + '</table>' : '';
+  const sp = r.spaces.filter(s => s.depth_if_entered > 0);
+  const spaces = sp.length ? `<div class="swh">Spaces that would take water if it got in</div><table class="rtable">` + sp.map(s => `<tr><td>${esc(s.name)} ${esc(s.use || '')}</td><td>${s.area} m²</td><td>${fmtM(s.depth_if_entered)} deep</td><td>${fmtEur(s.damage_eur)}</td></tr>`).join('') +
+    `<tr><td><b>Indicative damage</b></td><td></td><td></td><td><b>${fmtEur(r.damage_eur)}</b></td></tr></table>` : '<div class="empty" style="margin-top:8px">No space below the peak water level outside.</div>';
+  return `<div class="bhead"><b>${esc(r.name)}</b><button class="linkbtn" data-focus="${k}">Show in 3D</button></div>
+    <div style="font-size:13.5px;margin-bottom:6px">${verdict}</div>
+    <table class="rtable"><tr><td>Finished floor level</td><td>${fmtM(r.ffl)} AOD</td></tr><tr><td>Highest water against the walls</td><td>${fmtM(r.around.peak_level)} AOD</td></tr>
+    <tr><td>Above the floor level for</td><td>${r.ffl_exceeded ? min(r.ffl_minutes) : '–'}</td></tr></table>${chart}${doors}${spaces}
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(r.note)}</div>`;
+}
+let REPS_SEEN = []; function reps_index(r){ const i = IFCB.findIndex(b => b.id === r.id); return i < 0 ? 0 : i; }
+const fmtEur = v => v == null ? '–' : '€' + Math.round(v).toLocaleString();
 </script>
 </body>
 </html>

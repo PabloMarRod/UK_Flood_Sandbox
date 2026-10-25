@@ -47,6 +47,23 @@ def latest_result(area_id):
     return best
 
 
+def _ll(coords):
+    from pyproj import Transformer
+    tf = Transformer.from_crs(27700, 4326, always_xy=True)
+    return [[round(la, 7), round(lo, 7)] for lo, la in (tf.transform(x, y) for x, y in coords)]
+
+
+def _bld_ring(A, k):
+    from shapely import wkt
+    bm = json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())
+    return list(wkt.loads(bm[k]["wkt"]).exterior.coords)
+
+
+def api_current_kind():
+    """A run or an area preparation in progress (the model mustn't be rebuilt under it)."""
+    return JOB.get("kind")
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -140,8 +157,124 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, dict(r, saved=saved))
         return self._send(404, {"error": "not found"})
 
+    def _ifc_post(self, p):
+        """IFC buildings: /api/ifc/<area>/upload (raw .ifc), /check, /save (rebuilds the model), /remove."""
+        import ifcbuilding, sewer
+        from urllib.parse import urlparse, parse_qs
+        parts = p.strip("/").split("/")
+        if len(parts) != 4:
+            return self._send(404, {"error": "not found"})
+        try:
+            A = areas.load(parts[2])
+        except ValueError as e:
+            return self._send(404, {"error": str(e)})
+        up = Path(A["dir"]) / "ifc_upload"; act = parts[3]; n = int(self.headers.get("Content-Length", 0))
+        if act == "upload":
+            if n > 400_000_000:
+                return self._send(413, {"error": "The file is larger than 400 MB."})
+            name = Path(parse_qs(urlparse(self.path).query).get("name", ["model.ifc"])[0]).name
+            if Path(name).suffix.lower() != ".ifc":
+                return self._send(400, {"error": "Upload an IFC file (.ifc)."})
+            shutil.rmtree(up, ignore_errors=True); up.mkdir(parents=True)
+            (up / "model.ifc").write_bytes(self.rfile.read(n)); (up / "name.txt").write_text(name)
+            body = {}
+        else:
+            body = json.loads(self.rfile.read(n) or b"{}")
+        if act == "remove":
+            if api_current_kind():
+                return self._send(409, {"error": "Wait for the running job to finish."})
+            ifcbuilding.remove(A, str(body.get("id", "")))
+            areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
+            return self._send(200, {"ok": True})
+        f = up / "model.ifc"
+        if not f.exists():
+            return self._send(400, {"error": "Upload an IFC file first."})
+        pl = body.get("placement"); ffl = body.get("ffl")
+        if pl and "lat" in pl:                                       # centre dragged on the map -> the file's origin in BNG
+            from pyproj import Transformer
+            import math as _m
+            E_, N_ = Transformer.from_crs(4326, 27700, always_xy=True).transform(float(pl["lng"]), float(pl["lat"]))
+            loc = ifcbuilding.read_local_centre(f); a_ = _m.radians(float(pl.get("rot", 0)))
+            pl = dict(E=E_ - (loc[0] * _m.cos(a_) - loc[1] * _m.sin(a_)), N=N_ - (loc[0] * _m.sin(a_) + loc[1] * _m.cos(a_)), rot=float(pl.get("rot", 0)))
+        try:
+            r = ifcbuilding.check(f, A, sewer.Ground(A), placement=pl, accepted=body.get("accept") or [],
+                                  ffl_user=float(ffl) if ffl not in (None, "") else None)
+        except Exception as e:
+            traceback.print_exc(); return self._send(400, {"error": f"Couldn't read the model: {e}"})
+        out = dict(status=r["status"], issues=r["issues"], name=(up / "name.txt").read_text())
+        prev = r.get("preview") or r.get("building")
+        if prev:
+            out["preview"] = dict(footprint=_ll(prev["footprint"]), ffl=prev["ffl"], ground_min=prev["ground_min"], area=prev["area"],
+                                  doors=[dict(d, ll=_ll([[d["x"], d["y"]]])[0]) for d in prev["doors"]], storeys=prev["storeys"],
+                                  spaces=len(prev["spaces"]), replaces=[_ll(_bld_ring(A, k)) for k in prev["replaces"]], rot=prev.get("rot", 0),
+                                  centre=_ll([[sum(x for x, _ in prev["footprint"]) / len(prev["footprint"]),
+                                               sum(y for _, y in prev["footprint"]) / len(prev["footprint"])]])[0])
+        if r.get("local"):
+            out["local"] = r["local"]
+        if act == "save":
+            if r["status"] != "ok":
+                return self._send(400, dict(out, error="Resolve the issues first."))
+            if api_current_kind():
+                return self._send(409, {"error": "Wait for the running job to finish."})
+            bid = ifcbuilding.save(A, f, r, body.get("name") or out["name"].rsplit(".", 1)[0], placement=pl,
+                                   ffl_user=float(ffl) if ffl not in (None, "") else None)
+            areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
+            return self._send(200, dict(out, saved=bid))
+        return self._send(200, out)
+
     def _get(self):
         p = self.path.split("?")[0]
+        if p.startswith("/api/ifcreport/"):
+            import ifcbuilding
+            _, _, _, rid, bid = p.split("/")[:5]
+            rd = ROOT / "runs" / Path(rid).name
+            try:
+                A = areas.load(json.loads((rd / "params.json").read_text())["area"])
+                return self._send(200, ifcbuilding.report(A, rd, Path(bid).name))
+            except Exception as e:
+                traceback.print_exc(); return self._send(400, {"error": str(e)})
+        if p.startswith("/api/ifc/"):
+            import ifcbuilding
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+            except ValueError as e:
+                return self._send(404, {"error": str(e)})
+            return self._send(200, [dict(id=b["id"], name=b.get("name"), ffl=b.get("ffl"), area=b.get("area"),
+                                         doors=len(b.get("doors", [])), spaces=len(b.get("spaces", [])), footprint=_ll(b["footprint"]))
+                                    for b in ifcbuilding.load_all(A)])
+        if p.startswith("/api/buildingsnear/"):                     # mapped outlines around a point, as a placement guide
+            from urllib.parse import urlparse, parse_qs
+            from shapely.geometry import Point
+            from shapely import wkt
+            from pyproj import Transformer
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+                x, y = Transformer.from_crs(4326, 27700, always_xy=True).transform(float(q["lng"][0]), float(q["lat"][0]))
+                bm = json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())
+            except Exception as e:
+                return self._send(400, {"error": str(e)})
+            c = Point(x, y).buffer(float(q.get("r", ["200"])[0]))
+            return self._send(200, [_ll(list(g.exterior.coords)) for g in (wkt.loads(b["wkt"]) for b in bm if not b.get("ifc")) if g.intersects(c)][:400])
+        if p.startswith("/api/buildingat/"):
+            from urllib.parse import urlparse, parse_qs
+            from shapely.geometry import Point
+            from shapely import wkt
+            from pyproj import Transformer
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+                x, y = Transformer.from_crs(4326, 27700, always_xy=True).transform(float(q["lng"][0]), float(q["lat"][0]))
+                bm = json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())
+            except Exception as e:
+                return self._send(400, {"error": str(e)})
+            for k, b in enumerate(bm):
+                g = wkt.loads(b["wkt"])
+                if g.contains(Point(x, y)):
+                    c = g.centroid
+                    return self._send(200, dict(index=k, area=b["area"], type=b["type"], name=b.get("name"), ifc=b.get("ifc"),
+                                                ring=_ll(list(g.exterior.coords)), E=c.x, N=c.y))
+            return self._send(200, {"none": True})
         if p.startswith("/api/sewer/"):
             import sewer
             try:
@@ -267,6 +400,8 @@ class Handler(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         if p.startswith("/api/sewer/"):
             return self._sewer_post(p)
+        if p.startswith("/api/ifc/"):
+            return self._ifc_post(p)
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         if p in ("/api/check", "/api/run"):
             try:

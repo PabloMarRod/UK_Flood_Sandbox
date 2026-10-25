@@ -116,7 +116,7 @@ window.V3 = (() => {
     }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sk), 3)); sg.computeVertexNormals();
     root.add(new THREE.Mesh(sg, new THREE.MeshLambertMaterial({color: 0x7a6650, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4})));
-    zmid0 = zmid; buildBuildings(); buildTrees();
+    zmid0 = zmid; buildBuildings(); buildIfc(); buildTrees();
     // defences as walls up to their crest
     const dp = [];
     for (const d of sc.defences) for (let k = 0; k < d.l.length - 1; k++) {
@@ -169,6 +169,27 @@ window.V3 = (() => {
     const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bp), 3));
     bg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(bc), 3)); bg.computeVertexNormals();
     bGroup.add(new THREE.Mesh(bg, new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide})));
+  }
+
+  // imported IFC buildings: their own triangles, at true height above their base (only the ground is exaggerated)
+  let ifcGroup = null;
+  const IFC_COL = {IfcWall: 0xd9d2c5, IfcWallStandardCase: 0xd9d2c5, IfcCurtainWall: 0x9fb8c8, IfcSlab: 0xa9a49b,
+                   IfcRoof: 0x7a6f66, IfcDoor: 0x8a5a2b, IfcColumn: 0xbdb6aa};
+  function buildIfc() {
+    if (!S3) return;
+    if (ifcGroup) scene.remove(ifcGroup);
+    ifcGroup = new THREE.Group(); ifcGroup.position.set(-W / 2, 0, -D / 2); scene.add(ifcGroup);
+    for (const b of S3.ifc || []) {
+      const dy = ex * b.base - zmid0 - b.base;                       // y = ex*base - zmid + (z - base)
+      for (const p of b.parts) {
+        const v = new Float32Array(p.v.length);
+        for (let k = 0; k < p.v.length; k += 3) { v[k] = p.v[k]; v[k + 1] = p.v[k + 1] + dy; v[k + 2] = p.v[k + 2]; }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(v, 3));
+        g.setIndex(p.f); g.computeVertexNormals();
+        const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: IFC_COL[p.c] || 0xc8c2b8, side: THREE.DoubleSide}));
+        mesh.userData.ifc = b.id; ifcGroup.add(mesh);
+      }
+    }
   }
 
   // ground point under the mouse, in local metres [x east, z south] (null if off the model)
@@ -360,7 +381,11 @@ window.V3 = (() => {
     init, build, setResult,
     setFrame(k) { frame = k; if (layer === 'time') redraw(); },
     setLayer(l) { layer = l; redraw(); },
-    setExaggeration(v) { ex = v; if (root) { root.scale.y = v; buildBuildings(); buildTrees(); } },
+    focus(lx, lz, base, z) {                                          // centre on a point (local metres), e.g. a building
+      if (!target) return; target.set(lx - W / 2, ex * base - zmid0, lz - D / 2); if (z) zoom = z; placeCamera();
+      if (typeof requestRender === 'function') requestRender(); else if (renderer && scene && camera) renderer.render(scene, camera);
+    },
+    setExaggeration(v) { ex = v; if (root) { root.scale.y = v; buildBuildings(); buildIfc(); buildTrees(); } },
     setTrees(on) { showTrees = on; buildTrees(); },
     setEA(b64) { eaCells = b64 ? dec(b64, Uint8Array) : null; if (layer === 'ea') redraw(); },
     setPicker(fn) { picker = fn; if (renderer) renderer.domElement.style.cursor = fn ? 'crosshair' : 'grab'; },

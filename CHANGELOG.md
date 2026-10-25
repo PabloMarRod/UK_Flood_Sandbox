@@ -12,6 +12,11 @@ All notable changes are recorded here. The project follows semantic versioning o
   files may add weirs, flow controls, pumps and storage tanks as layers; any missing hydraulic value stops the
   import. SWMM cross-sections keep all their dimensions; custom closed shapes are supported;
   open channels (transects) and US-unit files are refused with an explanation.
+- IFC buildings: add a building from an IFC model (panel link, or click a mapped building). Georeferenced models
+  land in place; others are dragged and rotated on the map. Checks stop unusable files and offer repairs (levels,
+  units). The footprint replaces the mapped buildings it overlaps, the model shows in 3D, and each run gets a
+  Building tab: water at each door against its threshold and against the finished floor level, and the spaces at
+  risk with indicative damage.
 - Rivers entering a drawn area can carry up to 3,000 m³/s (was 300), and enter across their channel's width at
   the edge (found from the LiDAR bed level) rather than through one or two cells.
 - Fixed: flood defences running beyond an area were drawn in full in the 3D view, as a long line off the edge.

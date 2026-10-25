@@ -14,3 +14,4 @@ imageio-ffmpeg
 reportlab
 netCDF4
 psutil
+ifcopenshell

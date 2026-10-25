@@ -395,6 +395,8 @@ def build_mesh(A):
         if not gs: return np.zeros(shape, bool)
         return features.rasterize([(x, 1) for x in gs], out_shape=shape, transform=transform, all_touched=at).astype(bool)
     inside = ras([Polygon(A["poly_bng"])])
+    import ifcbuilding
+    bld, bld_tags = ifcbuilding.override(A, bld, bld_tags)        # imported IFC buildings replace the mapped ones
     b1 = features.rasterize([(x, 1) for x in bld], out_shape=(NY * H, NX * H), transform=from_origin(X0, Y1, 1, 1)) if bld \
         else np.zeros((NY * H, NX * H), np.uint8)
     is_bld = b1.reshape(NY, H, NX, H).mean(axis=(1, 3)) >= 0.5
@@ -640,7 +642,7 @@ def build_mesh(A):
             return "residential"
         tags_list = bld_tags if len(bld_tags) == len(bld) else [{}] * len(bld)
         (d / "cache" / "bld_meta.json").write_text(json.dumps([dict(area=round(g_.area, 1), type=_btype(t_), name=t_.get("name"),
-                                                                     wkt=g_.simplify(0.2).wkt) for g_, t_ in zip(bld, tags_list)]))
+                                                                     wkt=g_.simplify(0.2).wkt, **({"ifc": t_["ifc"]} if t_.get("ifc") else {})) for g_, t_ in zip(bld, tags_list)]))
     except Exception:
         pass
     meta["roof_area_m2"] = round(sum(r_["area"] for r_ in roofs), 1)

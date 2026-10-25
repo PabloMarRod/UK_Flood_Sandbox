@@ -173,6 +173,10 @@ def build_scene(A, status=lambda m: None):
     rgb[~ins] = (230, 233, 233)
     ground = _png(np.clip(rgb, 0, 255).astype(np.uint8))
 
+    import ifcbuilding
+    _p, _t = ifcbuilding.override(A, [p_ for p_, _ in bld], [t_ for _, t_ in bld])
+    bld = [(p_, t_) for p_, t_ in zip(_p, _t) if t_.get("building") != "ifc"]   # IFC buildings are drawn from their model
+    ifc_polys = [p_ for p_, t_ in zip(_p, _t) if t_.get("building") == "ifc"]
     # ---- buildings with heights
     dsm = _surface_model(A, dtm.shape, int(round(left)), int(round(top)), status)
     status("Measuring building heights")
@@ -207,7 +211,7 @@ def build_scene(A, status=lambda m: None):
     # ---- trees: canopy from the surface model (outside buildings and water), or mapped woodland as a fallback
     status("Finding trees")
     trees = []
-    bmask = features.rasterize([(p_.buffer(1.5), 1) for p_, _ in bld if not p_.is_empty], out_shape=dtm.shape,
+    bmask = features.rasterize([(p_.buffer(1.5), 1) for p_ in [p_ for p_, _ in bld] + ifc_polys if not p_.is_empty], out_shape=dtm.shape,
                                transform=from_origin(left, top, 1, 1)).astype(bool) if bld else np.zeros(dtm.shape, bool)
     wmask = features.rasterize([(g_, 1) for g_ in buckets["water"] if not g_.is_empty], out_shape=dtm.shape,
                                transform=from_origin(left, top, 1, 1)).astype(bool) if buckets["water"] else np.zeros(dtm.shape, bool)
@@ -265,7 +269,15 @@ def build_scene(A, status=lambda m: None):
     if "ent" in meta: inflows.append(dict(name="River inflow", at=loc(*meta["ent"])))
     exits = [dict(name=f["name"], at=loc(f["x"], f["y"])) for f in meta.get("exits", [])]
     if "ext" in meta: exits.append(dict(name="Culvert inlet", at=loc(*meta["ext"])))
-    scene = dict(H=H, NX=NX, NY=NY, X0=X0, Y1=Y1, heights=_b64(heights.astype(np.float32)),
+    ifc_out = []
+    for b_ in ifcbuilding.load_all(A):                               # IFC models, triangles in scene coordinates
+        parts = []
+        for part in ifcbuilding.geometry(A, b_["id"]):
+            v = np.array(part["v"], float)
+            parts.append(dict(c=part["cls"], v=np.round(np.c_[v[:, 0] - X0, v[:, 2], Y1 - v[:, 1]], 2).ravel().tolist(),
+                              f=np.array(part["f"], int).ravel().tolist()))
+        ifc_out.append(dict(id=b_["id"], name=b_.get("name"), base=b_.get("ground_min") or b_.get("ffl") or 0.0, parts=parts))
+    scene = dict(H=H, NX=NX, NY=NY, X0=X0, Y1=Y1, heights=_b64(heights.astype(np.float32)), ifc=ifc_out,
                  keep=_b64(keep.astype(np.uint8)), inside=_b64(inside.astype(np.uint8)),
                  ground=ground, ground_res=r, ground_size=[tw, th], buildings=out_b, defences=defs,
                  inflows=inflows, exits=exits, measured_buildings=measured, total_buildings=len(out_b),

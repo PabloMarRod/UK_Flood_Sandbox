@@ -434,6 +434,8 @@ def write_inp(A, q, path, h5name, est=None):
             p_ = vl[k]; p_[2] = f"{vzz[n_]:.3f}"; lines[v0_ + k] = " ".join(p_)
     suds_used = _apply_surface_measures(A, q, lines, cache)
     st1d = _structures(A, q, lines, cache)
+    import ifcbuilding                                               # which IFC buildings are in this run's mesh
+    Path(path).with_name("ifc_buildings.json").write_text(json.dumps([b["id"] for b in ifcbuilding.load_all(A)]))
     sw = sewer.model_lines(A, q, lines, cache, sewer.load(A), Path(path).with_name("sewer_nodes.json")) if q.get("sewer") else None
     if sw:
         for k_ in ("junctions", "outfalls", "storage", "orifices", "pumps", "curves", "xsections", "coords", "nodemap"):

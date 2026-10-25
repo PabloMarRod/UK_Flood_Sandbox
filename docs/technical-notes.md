@@ -558,6 +558,45 @@ system totals close.
 `tests/test_sewer.py` covers each blocking error, the repairs (including that a declined repair blocks saving),
 cover types and chamber sizes on import, how each cover type is linked to the surface, and a coupled engine run.
 
+## IFC buildings
+
+A building can be added from an IFC model (`ifcbuilding.py`, read with IfcOpenShell): from "Add IFC building" in
+the side panel, or by clicking a mapped building on the map and choosing "Replace with an IFC model". The model
+gives what national data doesn't: the footprint from its walls and slabs, the finished floor level (the lowest
+ground-floor door sill, else the lowest storey near the ground), each door's position and threshold level, and its
+spaces with their use, storey and floor area.
+
+Placement: an IfcMapConversion to British National Grid places it directly (its Scale is applied relative to
+metres, since the geometry is read in metres; a model in millimetres that left Scale at 1 is read as if it
+converted and noted). A site latitude and longitude gives an approximate, unrotated position. Otherwise the
+outline is dragged and rotated on the map, with the mapped buildings around it drawn as a guide.
+
+Checks, as for drainage networks: unreadable files, no walls or slabs with geometry, an implausibly large
+footprint, georeferencing to another coordinate system, or a building outside the area stop the import. If the
+levels don't sit on the ground (finished floor more than 3.5 m below or 3 m above the lowest LiDAR ground beside
+it, typically because levels are relative to the floor), the repair sets the floor 0.15 m above the LiDAR ground,
+or the user types the level; doors, storeys and spaces move with it. Missing doors or spaces are noted.
+
+In the model the footprint is a solid block and replaces OpenStreetMap buildings overlapping it by more than a
+quarter of their area, in both the mesh and the 3D scene; roof water and damage then treat it like any other
+building. The 3D view draws the model's own triangles at true height (only the ground is exaggerated). Adding or
+removing a building rebuilds the mesh (seconds) and the 3D scene, and is refused while a run is in progress.
+
+Each run records which IFC buildings were in its mesh. Its "Building" tab reports, for each: the highest water
+against the walls compared with the finished floor level (only from cells whose ground is at or below the floor,
+since on a slope uphill cells only carry a film of rain on ground already above it); at each door, the water level
+outside over time (cells within 7.5 m with ground at or below the threshold), the peak, the margin, when it first
+rises above the threshold and for how long, with doors whose surrounding ground is above the threshold flagged;
+and the ground-floor spaces below the peak level, with the depth they would take and indicative damage from the
+JRC curve for their use (residential, commercial or industrial, from the space's name) and floor area. Stage 1
+doesn't model water passing through doors, so spaces are an upper bound. Reports for runs made before a building
+was added are refused.
+
+Check (synthetic two-storey house, 18 x 12 m, finished floor 0.15 m above ground, on the valley side in Jesmond
+Vale, with the 2012 storm pattern): water came within 8 cm of the back door threshold and stayed below the floor
+level. `tests/test_ifc.py` covers georeferenced, millimetre and local models, placement, the level repair and a
+typed level, the blocking checks, the mesh override and its removal, and a report on an engine run.
+
 ## Model notes
 
 - Each area is a 5 or 10 m grid inside the drawn outline, each square split into two triangles; buildings

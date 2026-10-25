@@ -32,3 +32,6 @@ DATA DOWNLOADED BY THE APP (not redistributed in this repository unless noted)
 
 The Jesmond Vale preset in areas/jesmond-vale contains terrain derived from Environment Agency LIDAR and
 OpenStreetMap data, and Environment Agency gauge records for 28 June 2012.
+
+IfcOpenShell (https://ifcopenshell.org), GNU Lesser General Public License v3.0: used unmodified as a library
+to read IFC building models.
