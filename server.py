@@ -61,8 +61,27 @@ def _bld_ring(A, k):
 
 def api_current_kind():
     """The kind of job still running (a run or an area preparation), else None: the model mustn't be rebuilt under
-    it. JOB keeps the last job's kind after it ends, so ask whether its process is still alive."""
-    return JOB.get("kind") if busy() else None
+    it. JOB keeps the last job's kind after it ends, so ask whether its process is still alive. The speed test only
+    measures the computer, so it gives way: it is stopped (and runs again on a later start, as it never finished)."""
+    with LOCK:
+        if not busy():
+            return None
+        if JOB.get("kind") == "bench":
+            try:
+                JOB["proc"].kill(); JOB["proc"].wait(timeout=10)
+            except Exception:
+                pass
+            safeio.write_json(RUNS / "_bench" / "status.json", {"state": "cancelled", "progress": 0,
+                                                                "step": "Stopped to change a building; it runs again on a later start"})
+            JOB.update(kind=None, id=None, proc=None)
+            return None
+        return JOB.get("kind")
+
+
+def busy_message(kind):
+    return {"run": "A simulation is running: wait for it to finish, or cancel it, before changing buildings.",
+            "area": "An area is being prepared: wait for it to finish before changing buildings."}.get(
+        kind, "Wait for the running job to finish.")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -192,8 +211,8 @@ class Handler(BaseHTTPRequestHandler):
             (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)   # the 3D view shows the marks
             return self._send(200, {"ok": True, "ffl": b["ffl"], "doors": len(b["doors"]), "windows": len(b["windows"])})
         if act == "remove":
-            if api_current_kind():
-                return self._send(409, {"error": "Wait for the running job to finish."})
+            if (k_ := api_current_kind()):
+                return self._send(409, {"error": busy_message(k_)})
             ifcbuilding.remove(A, str(body.get("id", "")))
             areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
             return self._send(200, {"ok": True})
@@ -230,8 +249,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "save":
             if r["status"] != "ok":
                 return self._send(400, dict(out, error="Resolve the issues first."))
-            if api_current_kind():
-                return self._send(409, {"error": "Wait for the running job to finish."})
+            if (k_ := api_current_kind()):
+                return self._send(409, {"error": busy_message(k_)})
             bid = mod.save(A, f, r, body.get("name") or out["name"].rsplit(".", 1)[0], placement=pl,
                                    ffl_user=float(ffl) if ffl not in (None, "") else None)
             areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
