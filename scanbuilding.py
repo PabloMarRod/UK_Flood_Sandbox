@@ -249,14 +249,31 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
         is_g = np.abs(zc - lz) < 0.3
         high = zc > lz + 2.0
         bm = json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())
-        hits = [wkt.loads(b["wkt"]) for b in bm if not b.get("ifc")]
+        hits = [wkt.loads(b["wkt"]) for b in bm]                       # mapped and already added buildings alike
         hp = xyz[high][:: max(1, int(high.sum()) // 3000)]
         cen = Point(*hp[:, :2].mean(axis=0)) if len(hp) else None
         cand = [g for g in hits if cen is not None and g.distance(cen) < 60]
         best = max(cand, key=lambda g: int(within(g.buffer(1.0), hp).sum())) if cand else None
-        if best is None or not within(best.buffer(1.0), hp).any():
+        if (best is None or not within(best.buffer(1.0), hp).any()) and len(hp):
+            # no building on the map here (a new build, or a gap in the map): the raised points nearest the scan's centre
+            from scipy import ndimage
+            cell = 0.5; hx = xyz[high]; x0, y0 = hx[:, :2].min(axis=0) - 1
+            nx, ny = int(np.ptp(hx[:, 0]) / cell) + 3, int(np.ptp(hx[:, 1]) / cell) + 3
+            m = np.zeros((ny, nx), bool); m[((hx[:, 1] - y0) / cell).astype(int), ((hx[:, 0] - x0) / cell).astype(int)] = True
+            lab, n = ndimage.label(ndimage.binary_closing(m, iterations=2))
+            if n:
+                sizes = ndimage.sum(m, lab, range(1, n + 1)); c = xyz[:, :2].mean(axis=0)
+                cy, cx = int((c[1] - y0) / cell), int((c[0] - x0) / cell)
+                pick = lab[cy, cx] if 0 <= cy < ny and 0 <= cx < nx and lab[cy, cx] else 1 + int(np.argmax(sizes))
+                cells = np.argwhere(lab == pick)
+                if len(cells) * cell * cell >= 20:
+                    from shapely.geometry import MultiPoint
+                    best = MultiPoint([(x0 + (i + .5) * cell, y0 + (j + .5) * cell) for j, i in cells]).buffer(cell * 0.75).buffer(0)
+                    add(issue("W_NO_MAPPED", "warn", "No building on the map here: found from height alone", [],
+                              "Trees or walls touching the building may be included. A classified scan avoids this."))
+        if best is None:
             add(issue("E_NO_BUILDING", "error", "No building found in the scan", [],
-                      "Unclassified scans are matched to a mapped building; classify building points (code 6) instead."))
+                      "No raised points or mapped building where the scan lies. Classify building points (code 6), or check its position."))
             return done("blocked")
         reg = best.buffer(2.0)
         is_b = high & within(reg, xyz)
@@ -272,7 +289,7 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
         add(issue("E_FOOTPRINT", "error", "No usable building outline", [f"{0 if fp is None else fp.area:.0f} m²"])); return done("blocked")
     # a scan that covers only part of the building it stands on (one side of a house from a phone, say)
     bm = json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())
-    mapped = [g for g in (wkt.loads(b["wkt"]) for b in bm if not b.get("ifc")) if g.intersects(fp)]
+    mapped = [g for g in (wkt.loads(b["wkt"]) for b in bm) if g.intersects(fp)]
     big = max(mapped, key=lambda g: g.intersection(fp).area) if mapped else None
     if big is not None and big.area > 1.5 * fp.area and big.intersection(fp).area > 0.5 * fp.area:
         if add(issue("F_PARTIAL", "fix", "The scan covers only part of the mapped building", [f"scan {fp.area:.0f} m², mapped {big.area:.0f} m²"],
@@ -306,6 +323,10 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
         add(issue("W_FFL_PROVISIONAL", "warn", "Floor level provisional until doors are marked",
                   [f"{ffl:.2f} m AOD ({FFL_ABOVE_GROUND:g} m above the lowest ground)"],
                   "After adding the building, mark its doors and windows on the scan: their thresholds set the levels."))
+    prev = ib.added_overlaps(A, fp)
+    if prev:
+        add(issue("F_REPLACE_ADDED", "fix", "It overlaps a building you added", [n for _, n in prev],
+                  fix="Replace that building with this one"))
     osm = ib._osm_overlaps(A, fp)
     if osm:
         add(issue("W_REPLACES", "warn", "Mapped buildings this scan replaces", [f"{len(osm)} footprint(s)"]))
@@ -320,7 +341,8 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
                ffl=round(ffl, 3), ground_min=round(gmin, 3), height=round(top - gmin, 2), top=round(top, 3),
                doors=[], windows=[], spaces=[], storeys=[round(ffl, 3)],
                interior=dict(mode="storeys", reason="a scan has no rooms"),
-               placement=dict(source="scan", how=how, shift=round(shift, 3)), replaces=osm, schema=r["fmt"], source="scan",
+               placement=dict(source="scan", how=how, shift=round(shift, 3)), replaces=osm, replaces_added=[i for i, _ in prev],
+               schema=r["fmt"], source="scan",
                scan=dict(points=int(len(r["xyz"])), kept=int(len(xyz)), classified=r["cls"] is not None, datum_diff=round(diff, 3)),
                rot=0.0)
     c = fp.centroid

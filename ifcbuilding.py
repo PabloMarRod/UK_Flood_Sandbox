@@ -217,6 +217,10 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
                   "Each storey is one volume. Rooms are modelled separately when every outside door and window lies on a "
                   "space and internal doors join the spaces."))
     # buildings it replaces
+    prev = added_overlaps(A, fpb)
+    if prev:
+        add(issue("F_REPLACE_ADDED", "fix", "It overlaps a building you added", [n for _, n in prev],
+                  fix="Replace that building with this one"))
     osm = _osm_overlaps(A, fpb)
     if osm:
         add(issue("W_REPLACES", "warn", "Mapped buildings this model replaces", [f"{len(osm)} footprint(s)"],
@@ -239,7 +243,7 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
                        for s in r["spaces"]], storeys=[round(z, 3) for z in storey_levels],
                interior=dict(mode=interior["mode"], reason=interior.get("reason")),
                placement=dict(E=g["E"], N=g["N"], a=g["a"], b=g["b"], scale=g["scale"], dz=dz, source=g["source"]),
-               replaces=osm, schema=r["schema"])
+               replaces=osm, replaces_added=[i for i, _ in prev], schema=r["schema"])
     bld["rot"] = round(math.degrees(math.atan2(g["b"], g["a"])) % 360, 1)
     return dict(status=status, issues=iss, building=bld if status == "ok" else None, preview=bld, local=_local(r))
 
@@ -279,6 +283,16 @@ def read_local_centre(path):
     return _centres[k]
 
 
+def added_overlaps(A, fpb):
+    """Buildings already added (IFC or scan) that this footprint overlaps substantially: [(id, name)]."""
+    from shapely.geometry import Polygon
+    out = []
+    for b in load_all(A):
+        g = Polygon(b["footprint"])
+        if g.intersects(fpb) and g.intersection(fpb).area > 0.25 * min(g.area, fpb.area): out.append((b["id"], b.get("name") or b["id"]))
+    return out
+
+
 def _osm_overlaps(A, fpb):
     import json
     from shapely import wkt
@@ -287,6 +301,7 @@ def _osm_overlaps(A, fpb):
         return []
     out = []
     for k, b in enumerate(json.loads(p.read_text())):
+        if b.get("ifc"): continue                                    # added buildings are reported separately
         g = wkt.loads(b["wkt"])
         if g.intersects(fpb) and g.intersection(fpb).area > 0.25 * g.area: out.append(k)
     return out

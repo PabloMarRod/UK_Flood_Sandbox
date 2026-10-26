@@ -656,13 +656,15 @@ converted to British National Grid if it is another); a file with none whose poi
 British National Grid and noted; otherwise the scan is placed on the map, turned about its own centre. The cloud is
 thinned to one point per 10 cm cube. Ground and building points come from the ASPRS classification (2 ground, 6
 building) when present; otherwise ground is within 0.3 m of the LiDAR, and the building is the points more than 2 m
-above it (and walls above the ground) over the mapped building they sit on, which can take in trees or walls touching
-it and is noted. The outline is the occupancy of the building points on a 0.25 m grid, closed and filled; the
+above it (and walls above the ground) over the mapped or already-added building they sit on, which can take in trees
+or walls touching it and is noted. Where the map has no building (a new build, or a gap in the map) the building is
+the cluster of raised points nearest the scan's centre (at least 20 m2), also noted. The outline is the occupancy of the building points on a 0.25 m grid, closed and filled; the
 height comes from the roof (99.5th percentile) and the ground level from the scanned ground within 4 m. The
 scanned ground is compared with the LiDAR: within 0.5 m it is noted; beyond, a repair shifts the scan to match.
 Errors: unreadable files, fewer than 1,000 points, a scan outside the area, no building found, no usable outline,
 or too little ground around the building to check levels. Until doors are marked the floor level is provisional
-(0.15 m above the lowest ground). Doors and windows are then marked in 3D by clicking the scan at each threshold or
+(0.15 m above the lowest ground). A model or scan that overlaps a building already added (by more than a quarter of the smaller) is offered a repair
+that replaces it when saved, so added buildings never overlap. Doors and windows are then marked in 3D by clicking the scan at each threshold or
 sill (the level is read from the point clicked) and giving a width and height; the lowest door threshold becomes
 the floor level. A scan has no rooms, so its inside is one volume per storey. Up to 150,000 points are kept for the
 3D view, in the scan's colours if it has them.

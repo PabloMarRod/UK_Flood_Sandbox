@@ -251,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, dict(out, error="Resolve the issues first."))
             if (k_ := api_current_kind()):
                 return self._send(409, {"error": busy_message(k_)})
+            for old_id in r["building"].get("replaces_added", []):       # the user accepted replacing an added building
+                ifcbuilding.remove(A, old_id)
             bid = mod.save(A, f, r, body.get("name") or out["name"].rsplit(".", 1)[0], placement=pl,
                                    ffl_user=float(ffl) if ffl not in (None, "") else None)
             areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)

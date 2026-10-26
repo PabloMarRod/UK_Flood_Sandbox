@@ -14,7 +14,8 @@ All notable changes are recorded here. The project follows semantic versioning o
   open channels (transects) and US-unit files are refused with an explanation.
 - Scanned buildings: add a building from a point cloud (LAS, LAZ, E57, XYZ, PTS or CSV) or a mesh from a phone scan
   or photogrammetry (OBJ, PLY, GLB or glTF, sampled into points). Phone scans are placed on the map and levelled on
-  the LiDAR with the user's consent; partial scans can take the mapped outline; units are checked. Ground and building points come
+  the LiDAR with the user's consent; partial scans can take the mapped outline; units are checked. A model or scan
+  over a building already added offers to replace it, and a scan where the map has no building is found from height. Ground and building points come
   from the scan's classification, or from height above the LiDAR and the mapped outline; the outline, height and
   surrounding ground come from the scan, its levels are checked against the LiDAR (with a repair if they differ by
   more than 0.5 m), and doors and windows are marked by clicking the scan in 3D, their thresholds setting the floor

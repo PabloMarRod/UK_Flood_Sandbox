@@ -160,3 +160,32 @@ def test_millimetre_mesh_and_partial_scan_are_offered_repairs(A, G, cloud, centr
     assert "F_PARTIAL" in _codes(r, "fix")
     r = _accept_all(f, A, G, placement=centre)
     assert r["status"] == "ok" and r["building"]["area"] > 120                       # the mapped outline, not one wall
+
+
+def test_a_scan_over_an_added_building_offers_to_replace_it(A, G, cloud, tmp_path):
+    from ifc_samples import make_house
+    A2 = _area_copy(A, tmp_path)
+    f = make_house(tmp_path / "h.ifc", **SITE); old = ib.save(A2, f, ib.check(f, A2, G), "Test house"); areas.build_mesh(A2)
+    g = tmp_path / "geo.obj"; to_site(house_mesh(ground_z=cloud[2]["ground"])).export(str(g))
+    r = sb.check(g, A2, G)
+    assert "F_REPLACE_ADDED" in _codes(r, "fix")
+    r = _accept_all(g, A2, G)
+    assert r["status"] == "ok" and r["building"]["replaces_added"] == [old]
+    # the same for an IFC model over a scanned building
+    sid = sb.save(A2, g, r, "Scan"); ib.remove(A2, old); areas.build_mesh(A2)
+    r = ib.check(f, A2, G)
+    assert "F_REPLACE_ADDED" in _codes(r, "fix")
+    assert ib.check(f, A2, G, accepted=["F_REPLACE_ADDED"])["building"]["replaces_added"] == [sid]
+
+
+def test_a_scan_where_the_map_has_no_building(A, G, tmp_path):
+    from shapely import wkt
+    from shapely.geometry import Point
+    bm = [wkt.loads(b["wkt"]) for b in json.loads((Path(A["dir"]) / "cache" / "bld_meta.json").read_text())]
+    spot = next((Point(SITE["E"] + dx, SITE["N"] + dy) for dx in range(-300, 300, 20) for dy in range(-300, 300, 20)
+                 if all(g.distance(Point(SITE["E"] + dx, SITE["N"] + dy)) > 40 for g in bm)
+                 and G.at(SITE["E"] + dx, SITE["N"] + dy, 0) is not None), None)
+    assert spot is not None
+    f = tmp_path / "phone.glb"; y_up(house_mesh()).export(str(f))
+    r = _accept_all(f, A, G, placement=dict(E=spot.x, N=spot.y, rot=0))
+    assert r["status"] == "ok" and "W_NO_MAPPED" in _codes(r) and 180 < r["building"]["area"] < 260
