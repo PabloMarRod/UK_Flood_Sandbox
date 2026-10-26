@@ -79,6 +79,19 @@ select.num{width:auto}
 .msg.warn{background:#fbf1e6;color:var(--warn)}
 .msg.err{background:#fbe9e7;color:#9b1c1c}
 .actions{display:flex;justify-content:flex-end;gap:10px}
+.datarow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;margin:-2px 0 12px;
+  border:1px solid var(--line);border-radius:8px;font-size:12.5px;color:var(--muted)}
+.datatitle{font-weight:600;color:var(--ink,#16303a);font-size:12.5px;margin-bottom:2px}
+.dsec{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0}
+.dsec h3{font-size:14px;margin:0 0 6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dstatus{font-size:13px;color:var(--muted);margin-bottom:8px}
+.dacts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.brow:first-child{border-top:0}
+.bname{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bmeta{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.badge{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:#ece7f6;color:#5b3fa0;margin-right:6px;vertical-align:1px}
+.badge.scan{background:#e5f0e8;color:#1d6b3a}
 .sewrow{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--muted);margin:-4px 0 10px}
 .sewrow #sewerInfo{flex:1 1 100%}
 .sewrow #sewerShowWrap{margin-right:auto}
@@ -151,7 +164,10 @@ label.chk.big{font-size:14px;color:var(--ink)}
 #view3d{position:absolute;inset:0;z-index:450;background:linear-gradient(#dfe7ec,#eef1f0 60%,#e6e9e6)}
 #view3d canvas{display:block;cursor:grab}
 .viewbar{position:absolute;top:14px;right:14px;z-index:550;padding:8px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:min(520px,calc(100% - 380px))}
-.v3only{display:flex;gap:6px;align-items:center}
+.v3only{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+#gotoWrap{flex-basis:100%;display:flex;gap:6px;align-items:center;min-width:0}
+#gotoWrap[hidden]{display:none}
+#goto3d{flex:1;min-width:0;max-width:100%;text-overflow:ellipsis}
 .v3note{font-size:12px;color:var(--muted);flex-basis:100%}
 .v3note:empty{display:none}
 .rtabs{margin:0 0 12px}
@@ -239,9 +255,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
     <label class="chk"><input type="checkbox" id="treesOn" checked> Trees</label>
     <button type="button" class="ghost sm" id="defBtn" aria-expanded="false">Defences</button>
     <button type="button" class="linkbtn" id="resetV">Reset</button>
-    <label class="unit" id="gotoWrap" style="display:flex;gap:6px;align-items:center" hidden>Go to
-      <select class="num" id="goto3d" style="width:auto;max-width:170px;padding:4px 6px;font-size:13px" aria-label="Go to a building"></select></label>
   </div>
+  <label class="unit" id="gotoWrap" hidden>Go to
+    <select class="num" id="goto3d" style="width:auto;padding:4px 6px;font-size:13px" aria-label="Go to a building"></select></label>
   <div class="v3note" id="v3hint" style="font-size:11.5px" hidden>Drag to rotate · right-drag, Shift-drag or arrow keys to move · wheel to zoom where you point</div>
   <div class="v3note" id="v3note"></div>
 </div>
@@ -254,12 +270,10 @@ label.chk.big{font-size:14px;color:var(--ink)}
     <button class="ghost sm" id="newArea">New area</button>
   </div>
   <div class="areameta"><span id="areaInfo"></span><button class="linkbtn" id="delArea" hidden>Delete area</button></div>
-  <div class="sewrow"><span id="sewerInfo">No drainage network</span>
-    <label class="chk" id="sewerShowWrap" hidden><input type="checkbox" id="sewerShow" checked> Show</label>
-    <button class="linkbtn" id="sewerBtn">Import drainage</button></div>
-  <div class="sewrow"><span id="ifcInfo">No added buildings</span>
-    <button class="linkbtn" id="ifcBtn">Add building (IFC or scan)</button></div>
-  <div id="ifcList" style="font-size:12px;color:var(--muted);margin:-6px 0 10px"></div>
+  <div class="datarow">
+    <div><div class="datatitle">Area data</div><div id="dataSummary">No drainage network · no added buildings</div></div>
+    <button type="button" class="ghost sm" id="dataBtn">Manage</button>
+  </div>
   <p class="runname" id="runname">Loading…</p>
   <dl id="stats"></dl>
   <div class="seg" role="group" aria-label="Map layer">
@@ -531,6 +545,28 @@ label.chk.big{font-size:14px;color:var(--ink)}
 <div class="pickbar panel" id="pickbar" hidden>Click inside the dashed area to place the burst. <button class="linkbtn" id="pickCancel">Cancel</button></div>
 
 <!-- progress -->
+<dialog id="dlgData" aria-labelledby="dataTitle">
+  <div class="dlg">
+    <h2 id="dataTitle">Area data</h2>
+    <p class="sub">Data you have added to this area. Runs use it from the next scenario on.</p>
+    <section class="dsec" aria-labelledby="dsecDrain">
+      <h3 id="dsecDrain">Drainage network</h3>
+      <div class="dstatus" id="sewerInfo">No drainage network</div>
+      <div class="dacts">
+        <button type="button" class="ghost sm" id="sewerBtn">Import drainage</button>
+        <label class="chk" id="sewerShowWrap" hidden><input type="checkbox" id="sewerShow" checked> Show on the map</label>
+        <button type="button" class="linkbtn" id="sewerRemove2" hidden>Remove</button>
+      </div>
+    </section>
+    <section class="dsec" aria-labelledby="dsecBld">
+      <h3 id="dsecBld"><span>Added buildings</span><button type="button" class="ghost sm" id="ifcBtn">Add building (IFC or scan)</button></h3>
+      <div class="dstatus" id="ifcInfo">No added buildings. Add one from an IFC model, a point cloud or a mesh, or click a building on the map.</div>
+      <div id="ifcList"></div>
+    </section>
+    <div class="actions"><button type="button" class="ghost" id="dataClose">Close</button></div>
+  </div>
+</dialog>
+
 <dialog id="dlgSewer" aria-labelledby="sewTitle">
   <div class="dlg">
     <h2 id="sewTitle">Drainage network</h2>
@@ -752,6 +788,7 @@ function setView(v){
   view = v;
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
   $('view3d').hidden = v !== '3d'; $('v3tools').hidden = v !== '3d'; $('v3hint').hidden = v !== '3d';
+  $('gotoWrap').hidden = v !== '3d' || !IFCB.length;
   document.body.classList.toggle('in3d', v === '3d');
   if(window.V3) V3.show(v === '3d');
   $('defBtn').hidden = v !== '3d'; if(v !== '3d'){ $('defPanel').hidden = true; if(typeof cancelDef === 'function' && draft) cancelDef(); }
@@ -1721,9 +1758,9 @@ function drawSewer(){
 }
 function sewerUi(){
   const s = SEWER && SEWER.summary;
-  $('sewerInfo').textContent = s ? `Drainage: ${s.pipes} pipes${s.structures ? ` and ${s.structures} structures` : ''}, ${s.nodes} nodes (${SEWER.source})` : 'No drainage network';
-  $('sewerShowWrap').hidden = !s; $('sewerBtn').textContent = s ? 'Replace' : 'Import drainage';
-  $('sewerBtn').style.marginLeft = s ? '' : 'auto';
+  $('sewerInfo').textContent = s ? `${s.pipes} pipes${s.structures ? ` and ${s.structures} structures` : ''}, ${s.nodes} nodes, from ${SEWER.source}` : 'No drainage network. Import one from a SWMM file (InfoWorks, SewerGEMS, PCSWMM) or GIS layers.';
+  $('sewerShowWrap').hidden = !s; $('sewerRemove2').hidden = !s; $('sewerBtn').textContent = s ? 'Replace' : 'Import drainage';
+  dataSummary();
   $('sewerField').hidden = !s; if(s) $('sewerN').textContent = `Include the imported network (${s.pipes} pipes)`;
 }
 $('sewerShow').onchange = drawSewer;
@@ -1836,14 +1873,19 @@ async function loadIfc(id){
   if(ifcLayer){ ifcLayer.remove(); ifcLayer = null; }
   ifcLayer = L.layerGroup(IFCB.map(b => L.polygon(b.footprint, {color:'#5b3fa0', weight:2, fillColor:'#8f78c9', fillOpacity:.35})
     .bindTooltip(`IFC building: ${esc(b.name)}, floor ${fmtM(b.ffl)} AOD`))).addTo(map);
-  $('ifcInfo').textContent = IFCB.length ? `Added buildings: ${IFCB.length}` : 'No added buildings';
+  $('ifcInfo').textContent = IFCB.length ? '' : 'No added buildings. Add one from an IFC model, a point cloud or a mesh, or click a building on the map.';
+  $('ifcInfo').hidden = !!IFCB.length; dataSummary();
   $('bldField').hidden = !IFCB.length;
-  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} outside door${b.doors===1?'':'s'} · <button class="linkbtn" data-show="${b.id}">Show in 3D</button>${b.source === 'scan' ? ` · <button class="linkbtn" data-mark="${b.id}">Mark doors and windows</button>` : ''} · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
-  $('ifcList').querySelectorAll('[data-mark]').forEach(x => x.onclick = () => markOpenings(x.dataset.mark));
+  $('ifcList').innerHTML = IFCB.map(b => `<div class="brow">
+      <div class="bname" title="${esc(b.name)}"><span class="badge ${b.source === 'scan' ? 'scan' : ''}">${b.source === 'scan' ? 'Scan' : 'IFC'}</span>${esc(b.name)}</div>
+      <div class="dacts"><button type="button" class="ghost sm" data-show="${b.id}">Show in 3D</button>${b.source === 'scan' ? `<button type="button" class="ghost sm" data-mark="${b.id}">Mark doors and windows</button>` : ''}<button type="button" class="linkbtn" data-rm="${b.id}">Remove</button></div>
+      <div class="bmeta">Floor ${fmtM(b.ffl)} AOD · ${b.doors} outside door${b.doors === 1 ? '' : 's'}${b.source === 'scan' && !b.doors ? ' (mark them for water to get in)' : ''} · ${b.area} m²</div>
+    </div>`).join('');
+  $('ifcList').querySelectorAll('[data-mark]').forEach(x => x.onclick = () => { $('dlgData').close(); markOpenings(x.dataset.mark); });
   $('ifcList').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => removeIfc(x.dataset.rm));
-  $('ifcList').querySelectorAll('[data-show]').forEach(x => x.onclick = () => show3dBuilding(x.dataset.show));
+  $('ifcList').querySelectorAll('[data-show]').forEach(x => x.onclick = () => { $('dlgData').close(); show3dBuilding(x.dataset.show); });
   $('goto3d').innerHTML = '<option value="">Whole area</option>' + IFCB.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
-  $('gotoWrap').hidden = !IFCB.length;
+  $('gotoWrap').hidden = !IFCB.length || view !== '3d';
 }
 function show3dBuilding(bid){                                          // the scene may still be (re)building: retry briefly
   setView('3d'); let n = 0;
@@ -1860,6 +1902,7 @@ async function removeIfc(bid){
 function ifcMsg(t, cls){ $('ifcMsg').innerHTML = t ? `<div class="msg ${cls||''}">${t}</div>` : ''; }
 function clearPreview(){ if(ifcPrev){ ifcPrev.remove(); ifcPrev = null; } }
 function openIfc(pl){
+  if($('dlgData').open) $('dlgData').close();                         // placement needs the map
   IFCPL = pl || null; IFCD = null; IFCLOCAL = null; IFCFFL = null; clearPreview();
   $('ifcFile').value = ''; $('ifcFields').hidden = true; $('ifcReport').innerHTML = ''; ifcMsg('');
   $('ifcImport').hidden = true; $('ifcFfl').value = ''; $('dlgIfc').showModal();
@@ -2052,6 +2095,19 @@ $('markSave').onclick = async () => {
     openings: MARKS.map(m => ({kind:m.kind, x:m.E, y:m.N, sill:m.z, width:m.width, height:m.height}))})});
   const d = await r.json(); if(!r.ok){ $('markMsg').textContent = d.error; return; }
   endMark(); await loadIfc(AREA.id); sceneFor = null; loadScene(AREA.id);
+};
+
+/* the "Area data" row and window */
+function dataSummary(){
+  const s = SEWER && SEWER.summary, n = (typeof IFCB !== 'undefined' && IFCB) ? IFCB.length : 0;
+  const el = $('dataSummary'); if(!el) return;
+  el.textContent = `${s ? `Drainage: ${s.pipes} pipes` : 'No drainage network'} · ${n ? `${n} added building${n > 1 ? 's' : ''}` : 'no added buildings'}`;
+}
+$('dataBtn').onclick = () => $('dlgData').showModal();
+$('dataClose').onclick = () => $('dlgData').close();
+$('sewerRemove2').onclick = async () => {
+  if(!confirm('Remove the drainage network from this area?')) return;
+  await fetch(`/api/sewer/${AREA.id}/remove`, {method:'POST', body:'{}'}); loadSewer(AREA.id);
 };
 </script>
 </body>

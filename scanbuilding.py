@@ -336,7 +336,12 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
     keep = is_b | (~is_g & within(fp.buffer(6), xyz))
     disp = np.where(keep)[0]
     if len(disp) > DISPLAY_MAX: disp = np.sort(np.random.default_rng(0).choice(disp, DISPLAY_MAX, replace=False))
-    col = rgb[disp] if rgb is not None else np.where(is_b[disp, None], [[0.82, 0.78, 0.72]], [[0.36, 0.55, 0.30]])
+    col = rgb[disp] if rgb is not None else None
+    if col is None or float(col.std(axis=0).max()) < 0.03:            # no colour, or one flat colour: shade by height
+        z = xyz[disp, 2]; t = np.clip((z - gmin) / max(1.0, top - gmin), 0, 1)[:, None]
+        base = np.where(is_b[disp, None], [[0.62, 0.56, 0.50]], [[0.30, 0.48, 0.26]])
+        col = base * (0.65 + 0.55 * t)                                 # darker low, lighter high, so walls and roof read
+        col = np.clip(col, 0, 1)
     bld = dict(footprint=[[round(x, 3), round(y, 3)] for x, y in fp.exterior.coords], area=round(fp.area, 1),
                ffl=round(ffl, 3), ground_min=round(gmin, 3), height=round(top - gmin, 2), top=round(top, 3),
                doors=[], windows=[], spaces=[], storeys=[round(ffl, 3)],
