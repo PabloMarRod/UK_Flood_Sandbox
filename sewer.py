@@ -656,6 +656,18 @@ class Ground:
                     if best is None or d < best[0]: best = (d, self.z[j, i])
         return None if best is None else float(best[1])
 
+    def at_many(self, x, y, r=3):
+        """Ground at many points at once: the cell's level, or the nearest model cell's (buildings are holes)."""
+        if not hasattr(self, "_filled"):
+            from scipy import ndimage
+            bad = np.isnan(self.z)
+            dist, (jj, ii) = ndimage.distance_transform_edt(bad, return_indices=True)
+            f = self.z[jj, ii]; f[dist > r] = np.nan; self._filled = f
+        j = np.floor((self.Y1 - np.asarray(y)) / self.H).astype(int); i = np.floor((np.asarray(x) - self.X0) / self.H).astype(int)
+        ok = (j >= 0) & (j < self.NY) & (i >= 0) & (i < self.NX)
+        out = np.full(len(j), np.nan); out[ok] = self._filled[j[ok], i[ok]]
+        return out
+
     def inside(self, x, y):
         from shapely.geometry import Point
         return self.poly.contains(Point(x, y))

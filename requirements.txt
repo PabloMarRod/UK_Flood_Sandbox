@@ -15,3 +15,6 @@ reportlab
 netCDF4
 psutil
 ifcopenshell
+laspy[lazrs]
+pye57
+trimesh

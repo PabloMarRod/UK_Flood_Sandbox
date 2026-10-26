@@ -257,8 +257,8 @@ label.chk.big{font-size:14px;color:var(--ink)}
   <div class="sewrow"><span id="sewerInfo">No drainage network</span>
     <label class="chk" id="sewerShowWrap" hidden><input type="checkbox" id="sewerShow" checked> Show</label>
     <button class="linkbtn" id="sewerBtn">Import drainage</button></div>
-  <div class="sewrow"><span id="ifcInfo">No IFC buildings</span>
-    <button class="linkbtn" id="ifcBtn">Add IFC building</button></div>
+  <div class="sewrow"><span id="ifcInfo">No added buildings</span>
+    <button class="linkbtn" id="ifcBtn">Add building (IFC or scan)</button></div>
   <div id="ifcList" style="font-size:12px;color:var(--muted);margin:-6px 0 10px"></div>
   <p class="runname" id="runname">Loading…</p>
   <dl id="stats"></dl>
@@ -421,7 +421,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
         <div class="hint">Changes how fast parks and gardens soak up water. Parameters are assumed, not measured.</div>
       </div>
       <div class="field" id="bldField" hidden>
-        <span class="lbl">IFC buildings: doors and windows</span>
+        <span class="lbl">Added buildings: doors and windows</span>
         <div class="swgrid" style="grid-template-columns:200px 1fr;margin-top:4px">
           <span>Outside doors</span>
           <select name="bld_doors"><option value="closed" selected>Closed (they leak)</option><option value="open">Open</option></select>
@@ -438,7 +438,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
           <span>A window breaks at</span>
           <span class="inline"><input class="num" type="number" name="bld_window_break" min="0" max="3" step="0.05" value="" placeholder="not set" style="width:80px" aria-label="Breaking height in metres"><span class="unit">m above the sill</span></span>
         </div>
-        <div class="hint">Water reaches the inside of each IFC building through its outside doors and windows, and spreads through internal doors. Door leakage follows University of Hull laboratory tests of six UK external doors (2026): it rises with depth, from about 1,000 L/h per metre of width at 0.2 m to about 4,000 at 0.6 m, varying widely between doors. No domestic door gave way up to 0.6 m in those tests. For glazed doors, Kelman (2002) found double-glazed door panels likely to break once the water outside is about 1.5 m above the floor; try 1.5 m. He also found window glass too small and too high to break in floods, and windows leaking about a tenth as fast as doors, which is how they are modelled. Barriers are treated as watertight up to their top; in practice they depend on fit and installation.</div>
+        <div class="hint">Water reaches the inside of each added building through its outside doors and windows, and spreads through internal doors. Door leakage follows University of Hull laboratory tests of six UK external doors (2026): it rises with depth, from about 1,000 L/h per metre of width at 0.2 m to about 4,000 at 0.6 m, varying widely between doors. No domestic door gave way up to 0.6 m in those tests. For glazed doors, Kelman (2002) found double-glazed door panels likely to break once the water outside is about 1.5 m above the floor; try 1.5 m. He also found window glass too small and too high to break in floods, and windows leaking about a tenth as fast as doors, which is how they are modelled. Barriers are treated as watertight up to their top; in practice they depend on fit and installation.</div>
       </div>
       <div class="field" id="sewerField" hidden>
         <span class="lbl">Drainage network</span>
@@ -551,9 +551,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
 
 <dialog id="dlgIfc" aria-labelledby="ifcTitle">
   <div class="dlg">
-    <h2 id="ifcTitle">IFC building</h2>
-    <p class="sub">Add a building from an IFC model (IFC2x3 or IFC4). Its footprint replaces the mapped buildings it overlaps, its doors and floor level are checked against the water, and it shows in 3D. A georeferenced model (IfcMapConversion to British National Grid) lands in place; otherwise you place it on the map.</p>
-    <div class="field"><input type="file" id="ifcFile" accept=".ifc" aria-label="IFC file"></div>
+    <h2 id="ifcTitle">Building from a model or a scan</h2>
+    <p class="sub">Add a building from an IFC model (IFC2x3 or IFC4) a point cloud (LAS, LAZ, E57, XYZ, PTS or CSV from a laser scanner or drone) or a mesh (OBJ, PLY, GLB or glTF from a phone scan or photogrammetry). Its footprint replaces the mapped buildings it overlaps, its doors and floor level are checked against the water, and it shows in 3D. A georeferenced file (British National Grid, metres above Ordnance Datum) lands in place; otherwise you place it on the map. A phone scan has no real heights, so it is levelled on the LiDAR. For a scan, mark its doors and windows on the points once it is added.</p>
+    <div class="field"><input type="file" id="ifcFile" accept=".ifc,.las,.laz,.e57,.xyz,.pts,.csv,.txt,.obj,.ply,.glb,.gltf" aria-label="IFC model, point cloud or mesh"></div>
     <div class="swgrid" id="ifcFields" hidden>
       <span>Name</span><input id="ifcName" class="num" style="width:100%;text-align:left">
       <span>Position</span><span><span id="ifcPos"></span> <button type="button" class="linkbtn" id="ifcPlace">Place on the map</button></span>
@@ -567,6 +567,16 @@ label.chk.big{font-size:14px;color:var(--ink)}
     </div>
   </div>
 </dialog>
+<div id="markbar" hidden style="position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1200;background:#fff;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.18);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;max-width:760px">
+  <label class="chk"><input type="radio" name="markKind" value="door" checked> Door</label>
+  <label class="chk"><input type="radio" name="markKind" value="window"> Window</label>
+  <span class="inline">Width <input class="num" type="number" id="markW" value="0.9" min="0.3" max="10" step="0.05" style="width:64px"> m</span>
+  <span class="inline">Height <input class="num" type="number" id="markH" value="2.1" min="0.3" max="5" step="0.05" style="width:64px"> m</span>
+  <span id="markMsg" style="flex-basis:100%;color:var(--muted)">Click the scan at the threshold of a door, or the sill of a window.</span>
+  <button type="button" class="linkbtn" id="markUndo">Undo last</button>
+  <button type="button" class="ghost" id="markCancel">Cancel</button>
+  <button type="button" class="primary" id="markSave" style="width:auto;padding:8px 16px">Save</button>
+</div>
 <div id="ifcbar" hidden>
   <span>Drag the outline to move it. Rotate:</span>
   <input type="range" id="ifcRot" min="0" max="359" step="1" value="0" aria-label="Rotation in degrees"><span id="ifcRotV">0°</span>
@@ -1826,9 +1836,10 @@ async function loadIfc(id){
   if(ifcLayer){ ifcLayer.remove(); ifcLayer = null; }
   ifcLayer = L.layerGroup(IFCB.map(b => L.polygon(b.footprint, {color:'#5b3fa0', weight:2, fillColor:'#8f78c9', fillOpacity:.35})
     .bindTooltip(`IFC building: ${esc(b.name)}, floor ${fmtM(b.ffl)} AOD`))).addTo(map);
-  $('ifcInfo').textContent = IFCB.length ? `IFC buildings: ${IFCB.length}` : 'No IFC buildings';
+  $('ifcInfo').textContent = IFCB.length ? `Added buildings: ${IFCB.length}` : 'No added buildings';
   $('bldField').hidden = !IFCB.length;
-  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} outside door${b.doors===1?'':'s'} · <button class="linkbtn" data-show="${b.id}">Show in 3D</button> · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
+  $('ifcList').innerHTML = IFCB.map(b => `<div>${esc(b.name)} · floor ${fmtM(b.ffl)} · ${b.doors} outside door${b.doors===1?'':'s'} · <button class="linkbtn" data-show="${b.id}">Show in 3D</button>${b.source === 'scan' ? ` · <button class="linkbtn" data-mark="${b.id}">Mark doors and windows</button>` : ''} · <button class="linkbtn" data-rm="${b.id}">Remove</button></div>`).join('');
+  $('ifcList').querySelectorAll('[data-mark]').forEach(x => x.onclick = () => markOpenings(x.dataset.mark));
   $('ifcList').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => removeIfc(x.dataset.rm));
   $('ifcList').querySelectorAll('[data-show]').forEach(x => x.onclick = () => show3dBuilding(x.dataset.show));
   $('goto3d').innerHTML = '<option value="">Whole area</option>' + IFCB.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
@@ -2008,6 +2019,40 @@ function bldHtml(r){
 }
 let REPS_SEEN = []; function reps_index(r){ const i = IFCB.findIndex(b => b.id === r.id); return i < 0 ? 0 : i; }
 const fmtEur = v => v == null ? '–' : '€' + Math.round(v).toLocaleString();
+
+/* marking doors and windows on a scan */
+let MARKS = [], MARKID = null;
+function markText(){
+  const d = MARKS.filter(m => m.kind === 'door').length, w = MARKS.length - d;
+  const low = MARKS.filter(m => m.kind === 'door').map(m => m.z);
+  $('markMsg').textContent = `${d} door${d===1?'':'s'}, ${w} window${w===1?'':'s'}` + (low.length ? ` · floor level from the lowest threshold: ${Math.min(...low).toFixed(2)} m AOD` : '') + ' · click the scan at a threshold or sill.';
+}
+function markOpenings(bid){
+  const b = IFCB.find(x => x.id === bid); if(!b) return;
+  MARKID = bid; MARKS = (b.openings || []).map(o => ({id:bid, kind:o.kind, E:o.x, N:o.y, z:o.sill, width:o.width, height:o.height}));
+  show3dBuilding(bid);
+  const start = () => { if(!window.V3 || !V3.pickScan){ setTimeout(start, 400); return; }
+    V3.showMarks(MARKS); markText(); $('markbar').hidden = false;
+    V3.pickScan(p => {
+      if(!p || p.id !== MARKID){ $('markMsg').textContent = 'Click on the scanned points of this building.'; return; }
+      const kind = document.querySelector('input[name=markKind]:checked').value;
+      MARKS.push({id:MARKID, kind, E:p.E, N:p.N, z:p.z, width:+$('markW').value || (kind === 'door' ? 0.9 : 1.0), height:+$('markH').value || (kind === 'door' ? 2.1 : 1.2)});
+      V3.showMarks(MARKS); markText(); }); };
+  start();
+}
+document.querySelectorAll('input[name=markKind]').forEach(r => r.onchange = () => {
+  const door = document.querySelector('input[name=markKind]:checked').value === 'door';
+  $('markW').value = door ? 0.9 : 1.2; $('markH').value = door ? 2.1 : 1.2; });
+function endMark(){ $('markbar').hidden = true; if(window.V3){ V3.pickScan(null); V3.showMarks([]); } MARKID = null; }
+$('markUndo').onclick = () => { MARKS.pop(); V3.showMarks(MARKS); markText(); };
+$('markCancel').onclick = endMark;
+$('markSave').onclick = async () => {
+  const id = MARKID;
+  const r = await fetch(`/api/ifc/${AREA.id}/openings`, {method:'POST', body:JSON.stringify({id,
+    openings: MARKS.map(m => ({kind:m.kind, x:m.E, y:m.N, sill:m.z, width:m.width, height:m.height}))})});
+  const d = await r.json(); if(!r.ok){ $('markMsg').textContent = d.error; return; }
+  endMark(); await loadIfc(AREA.id); sceneFor = null; loadScene(AREA.id);
+};
 </script>
 </body>
 </html>

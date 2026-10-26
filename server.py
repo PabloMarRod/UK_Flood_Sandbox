@@ -159,8 +159,9 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
     def _ifc_post(self, p):
-        """IFC buildings: /api/ifc/<area>/upload (raw .ifc), /check, /save (rebuilds the model), /remove."""
-        import ifcbuilding, sewer
+        """IFC or scanned buildings: /api/ifc/<area>/upload (raw .ifc, .las, .laz or .e57), /check, /save (rebuilds the
+        model), /remove, /openings (doors and windows marked on a scan)."""
+        import ifcbuilding, scanbuilding, sewer
         from urllib.parse import urlparse, parse_qs
         parts = p.strip("/").split("/")
         if len(parts) != 4:
@@ -174,35 +175,49 @@ class Handler(BaseHTTPRequestHandler):
             if n > 400_000_000:
                 return self._send(413, {"error": "The file is larger than 400 MB."})
             name = Path(parse_qs(urlparse(self.path).query).get("name", ["model.ifc"])[0]).name
-            if Path(name).suffix.lower() != ".ifc":
-                return self._send(400, {"error": "Upload an IFC file (.ifc)."})
+            ext = Path(name).suffix.lower()
+            if ext not in (".ifc",) + scanbuilding.POINT_FORMATS + scanbuilding.MESH_FORMATS:
+                return self._send(400, {"error": "Upload an IFC model (.ifc), a point cloud (.las, .laz, .e57, .xyz, .pts, .csv) "
+                                                 "or a mesh (.obj, .ply, .glb, .gltf)."})
             shutil.rmtree(up, ignore_errors=True); up.mkdir(parents=True)
-            (up / "model.ifc").write_bytes(self.rfile.read(n)); (up / "name.txt").write_text(name)
+            (up / ("model" + ext)).write_bytes(self.rfile.read(n)); (up / "name.txt").write_text(name)
             body = {}
         else:
             body = json.loads(self.rfile.read(n) or b"{}")
+        if act == "openings":
+            try:
+                b = scanbuilding.set_openings(A, Path(str(body.get("id", ""))).name, body.get("openings") or [])
+            except Exception as e:
+                return self._send(400, {"error": f"Couldn't save the openings: {e}"})
+            (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)   # the 3D view shows the marks
+            return self._send(200, {"ok": True, "ffl": b["ffl"], "doors": len(b["doors"]), "windows": len(b["windows"])})
         if act == "remove":
             if api_current_kind():
                 return self._send(409, {"error": "Wait for the running job to finish."})
             ifcbuilding.remove(A, str(body.get("id", "")))
             areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
             return self._send(200, {"ok": True})
-        f = up / "model.ifc"
-        if not f.exists():
-            return self._send(400, {"error": "Upload an IFC file first."})
+        f = next((p_ for p_ in sorted(up.glob("model.*"))), None) if up.exists() else None
+        if f is None:
+            return self._send(400, {"error": "Upload a model or a scan first."})
+        mod = ifcbuilding if f.suffix.lower() == ".ifc" else scanbuilding
         pl = body.get("placement"); ffl = body.get("ffl")
         if pl and "lat" in pl:                                       # centre dragged on the map -> the file's origin in BNG
             from pyproj import Transformer
             import math as _m
             E_, N_ = Transformer.from_crs(4326, 27700, always_xy=True).transform(float(pl["lng"]), float(pl["lat"]))
-            loc = ifcbuilding.read_local_centre(f); a_ = _m.radians(float(pl.get("rot", 0)))
-            pl = dict(E=E_ - (loc[0] * _m.cos(a_) - loc[1] * _m.sin(a_)), N=N_ - (loc[0] * _m.sin(a_) + loc[1] * _m.cos(a_)), rot=float(pl.get("rot", 0)))
+            if mod is scanbuilding:                                  # a scan is turned about its own centre
+                pl = dict(E=E_, N=N_, rot=float(pl.get("rot", 0)))
+            else:
+                loc = ifcbuilding.read_local_centre(f); a_ = _m.radians(float(pl.get("rot", 0)))
+                pl = dict(E=E_ - (loc[0] * _m.cos(a_) - loc[1] * _m.sin(a_)), N=N_ - (loc[0] * _m.sin(a_) + loc[1] * _m.cos(a_)), rot=float(pl.get("rot", 0)))
         try:
-            r = ifcbuilding.check(f, A, sewer.Ground(A), placement=pl, accepted=body.get("accept") or [],
+            r = mod.check(f, A, sewer.Ground(A), placement=pl, accepted=body.get("accept") or [],
                                   ffl_user=float(ffl) if ffl not in (None, "") else None)
         except Exception as e:
             traceback.print_exc(); return self._send(400, {"error": f"Couldn't read the model: {e}"})
-        out = dict(status=r["status"], issues=r["issues"], name=(up / "name.txt").read_text())
+        out = dict(status=r["status"], issues=r["issues"], name=(up / "name.txt").read_text(),
+                   source="scan" if mod is scanbuilding else "ifc")
         prev = r.get("preview") or r.get("building")
         if prev:
             out["preview"] = dict(footprint=_ll(prev["footprint"]), ffl=prev["ffl"], ground_min=prev["ground_min"], area=prev["area"],
@@ -217,7 +232,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, dict(out, error="Resolve the issues first."))
             if api_current_kind():
                 return self._send(409, {"error": "Wait for the running job to finish."})
-            bid = ifcbuilding.save(A, f, r, body.get("name") or out["name"].rsplit(".", 1)[0], placement=pl,
+            bid = mod.save(A, f, r, body.get("name") or out["name"].rsplit(".", 1)[0], placement=pl,
                                    ffl_user=float(ffl) if ffl not in (None, "") else None)
             areas.build_mesh(A); (Path(A["dir"]) / "cache" / "scene.json").unlink(missing_ok=True)
             return self._send(200, dict(out, saved=bid))
@@ -240,9 +255,13 @@ class Handler(BaseHTTPRequestHandler):
                 A = areas.load(p.rsplit("/", 1)[1])
             except ValueError as e:
                 return self._send(404, {"error": str(e)})
-            return self._send(200, [dict(id=b["id"], name=b.get("name"), ffl=b.get("ffl"), area=b.get("area"),
+            return self._send(200, [dict(id=b["id"], name=b.get("name"), ffl=b.get("ffl"), area=b.get("area"), source=b.get("source", "ifc"),
                                          doors=sum(1 for d in b.get("doors", []) if d.get("kind", "external") == "external"),
-                                         spaces=len(b.get("spaces", [])), footprint=_ll(b["footprint"]))
+                                         spaces=len(b.get("spaces", [])), footprint=_ll(b["footprint"]),
+                                         openings=[dict(kind=k_, x=o["x"], y=o["y"], sill=o["sill"], width=o.get("width"),
+                                                        height=(o.get("height") if k_ == "door" else (o.get("top", o["sill"] + 1.2) - o["sill"])))
+                                                   for k_, L_ in (("door", b.get("doors", [])), ("window", b.get("windows", [])))
+                                                   for o in L_] if b.get("source") == "scan" else [])
                                     for b in ifcbuilding.load_all(A)])
         if p.startswith("/api/buildingsnear/"):                     # mapped outlines around a point, as a placement guide
             from urllib.parse import urlparse, parse_qs

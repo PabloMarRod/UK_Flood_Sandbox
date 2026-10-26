@@ -75,6 +75,7 @@ window.V3 = (() => {
     dom.addEventListener('pointerdown', e => { downAt = {x: e.clientX, y: e.clientY}; });
     dom.addEventListener('pointerup', e => {
       const moved = downAt ? Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) : 99; drag = null;
+      if (scanPick && moved < 5 && e.button === 0) { const p = pickScanAt(e.clientX, e.clientY); scanPick(p); return; }
       if (picker && moved < 5 && e.button === 0) { const p = groundAt(e.clientX, e.clientY); if (p) picker(p, e); }
     });
     dom.addEventListener('dblclick', e => { if (picker) picker(null, e); });
@@ -209,10 +210,34 @@ window.V3 = (() => {
       if (!off) L_.el.style.transform = `translate(${(v.x + 1) / 2 * r.width}px, ${(1 - v.y) / 2 * r.height}px) translate(-50%, -100%)`;
     }
   }
+  let scanPick = null, pickMarks = null;
+  function pickScanAt(cx, cy) {                                       // the scanned point under the mouse, in BNG and m AOD
+    if (!ifcGroup) return null;
+    raycaster = raycaster || new THREE.Raycaster();
+    const r = renderer.domElement.getBoundingClientRect();
+    raycaster.params.Points = {threshold: Math.max(0.15, (camera.top - camera.bottom) / r.height * 4)};
+    raycaster.setFromCamera(new THREE.Vector2((cx - r.left) / r.width * 2 - 1, -(cy - r.top) / r.height * 2 + 1), camera);
+    const hits = raycaster.intersectObjects(ifcGroup.children.filter(o => o.userData.scan));
+    if (!hits.length) return null;
+    const h = hits[0], pa = h.object.geometry.attributes.position, i = h.index;
+    return {id: h.object.userData.ifc, E: S3.X0 + pa.getX(i), N: S3.Y1 - pa.getZ(i), z: pa.getY(i) - h.object.userData.dy};
+  }
+  function showMarks(list) {                                          // marks being placed, before they are saved
+    if (pickMarks) { scene.remove(pickMarks); pickMarks = null; }
+    if (!list || !list.length || !S3) return;
+    pickMarks = new THREE.Group(); pickMarks.position.set(-W / 2, 0, -D / 2); scene.add(pickMarks);
+    const b = (S3.ifc || [])[0];
+    for (const o of list) {
+      const bb = (S3.ifc || []).find(x => x.id === o.id) || b, dy = ex * bb.base - zmid0 - bb.base;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.3, o.width || 0.9), o.kind === 'door' ? 2.0 : 1.1, 0.3),
+                               new THREE.MeshLambertMaterial({color: o.kind === 'door' ? 0xd07b2a : 0x2f7fd1, transparent: true, opacity: 0.85}));
+      m.position.set(o.E - S3.X0, o.z + dy + (o.kind === 'door' ? 1.0 : 0.55), S3.Y1 - o.N); pickMarks.add(m);
+    }
+  }
   function focusIfc(id, z) {
     const b = (S3 && S3.ifc || []).find(x => x.id === id); if (!b) return false;
     let sx = 0, sz = 0, n = 0;
-    for (const p of b.parts) for (let k = 0; k < p.v.length; k += 3) { sx += p.v[k]; sz += p.v[k + 2]; n++; }
+    for (const p of b.parts) { const a = p.v || p.p; for (let k = 0; k < a.length; k += 3) { sx += a[k]; sz += a[k + 2]; n++; } }
     if (!n) return false;
     target.set(sx / n - W / 2, ex * b.base - zmid0, sz / n - D / 2); zoom = z || 7; placeCamera(); return true;
   }
@@ -225,6 +250,14 @@ window.V3 = (() => {
     for (const b of S3.ifc || []) {
       const dy = ex * b.base - zmid0 - b.base;                       // y = ex*base - zmid + (z - base)
       for (const p of b.parts) {
+        if (p.p) {                                                    // a scan: its points, in its own colours
+          const v = new Float32Array(p.p.length);
+          for (let k = 0; k < p.p.length; k += 3) { v[k] = p.p[k]; v[k + 1] = p.p[k + 1] + dy; v[k + 2] = p.p[k + 2]; }
+          const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(v, 3));
+          if (p.rgb && p.rgb.length === p.p.length) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(p.rgb), 3));
+          const pts = new THREE.Points(g, new THREE.PointsMaterial({size: 2.2, sizeAttenuation: false, vertexColors: !!(p.rgb && p.rgb.length), color: p.rgb && p.rgb.length ? 0xffffff : 0xd2c8b8}));
+          pts.userData = {ifc: b.id, scan: true, dy}; ifcGroup.add(pts); continue;
+        }
         const v = new Float32Array(p.v.length);
         for (let k = 0; k < p.v.length; k += 3) { v[k] = p.v[k]; v[k + 1] = p.v[k + 1] + dy; v[k + 2] = p.v[k + 2]; }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(v, 3));
@@ -234,8 +267,13 @@ window.V3 = (() => {
       }
       // a tall pin above the building and its name, so it can be found at any zoom
       let sx = 0, sz = 0, top = -1e9, n = 0;
-      for (const p of b.parts) for (let k = 0; k < p.v.length; k += 3) { sx += p.v[k]; sz += p.v[k + 2]; top = Math.max(top, p.v[k + 1]); n++; }
+      for (const p of b.parts) { const a = p.v || p.p; for (let k = 0; k < a.length; k += 3) { sx += a[k]; sz += a[k + 2]; top = Math.max(top, a[k + 1]); n++; } }
       if (!n) continue;
+      for (const o of b.openings || []) {                             // doors and windows marked on a scan
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.9, o.kind === 'door' ? 2.0 : 1.1, 0.25),
+                                 new THREE.MeshLambertMaterial({color: o.kind === 'door' ? 0x8a5a2b : 0x4f86b5}));
+        m.position.set(o.x, o.y + dy + (o.kind === 'door' ? 1.0 : 0.55), o.z); ifcGroup.add(m);
+      }
       const cx = sx / n, cz = sz / n, ytop = top + dy, ps = Math.max(W, D) / 45;
       const pinG = new THREE.Group(); pinG.position.set(cx, ytop, cz); ifcGroup.add(pinG); pins.push(pinG);
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(ps * 0.04, ps * 0.04, ps * 1.6, 8), new THREE.MeshLambertMaterial({color: 0x5b3fa0}));
@@ -441,6 +479,13 @@ window.V3 = (() => {
     setFrame(k) { frame = k; if (layer === 'time') redraw(); },
     setLayer(l) { layer = l; redraw(); },
     focusIfc(id, z) { return focusIfc(id, z); },
+    pickScan(cb) { scanPick = cb || null; },
+    project(E, N, z, id) {                                            // screen position of a point (BNG, m AOD)
+      const b = (S3.ifc || []).find(x => x.id === id) || {base: z}, dy = ex * b.base - zmid0 - b.base;
+      const v = new THREE.Vector3(E - S3.X0 - W / 2, z + dy, S3.Y1 - N - D / 2).project(camera), r = renderer.domElement.getBoundingClientRect();
+      return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height];
+    },                           // click a scanned point: cb({id, E, N, z}) or cb(null)
+    showMarks(list) { showMarks(list); },
     ifcList() { return (S3 && S3.ifc || []).map(b => ({id: b.id, name: b.name})); },
     focus(lx, lz, base, z) {                                          // centre on a point (local metres), e.g. a building
       if (!target) return; target.set(lx - W / 2, ex * base - zmid0, lz - D / 2); if (z) zoom = z; placeCamera();

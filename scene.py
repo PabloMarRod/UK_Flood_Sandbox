@@ -273,10 +273,18 @@ def build_scene(A, status=lambda m: None):
     for b_ in ifcbuilding.load_all(A):                               # IFC models, triangles in scene coordinates
         parts = []
         for part in ifcbuilding.geometry(A, b_["id"]):
+            if "pts" in part:                                        # a scan: points, with colours
+                v = np.array(part["pts"], float).reshape(-1, 3)
+                parts.append(dict(c="scan", p=np.round(np.c_[v[:, 0] - X0, v[:, 2], Y1 - v[:, 1]], 2).ravel().tolist(),
+                                  rgb=np.round(np.array(part.get("rgb") or [], float), 2).tolist()))
+                continue
             v = np.array(part["v"], float)
             parts.append(dict(c=part["cls"], v=np.round(np.c_[v[:, 0] - X0, v[:, 2], Y1 - v[:, 1]], 2).ravel().tolist(),
                               f=np.array(part["f"], int).ravel().tolist()))
-        ifc_out.append(dict(id=b_["id"], name=b_.get("name"), base=b_.get("ground_min") or b_.get("ffl") or 0.0, parts=parts))
+        ifc_out.append(dict(id=b_["id"], name=b_.get("name"), base=b_.get("ground_min") or b_.get("ffl") or 0.0, parts=parts,
+                            source=b_.get("source", "ifc"), openings=[dict(kind=k_, x=round(o["x"] - X0, 2), z=round(Y1 - o["y"], 2), y=o["sill"])
+                                                                      for k_, L_ in (("door", b_.get("doors", [])), ("window", b_.get("windows", [])))
+                                                                      for o in L_ if o.get("kind", "external") == "external"]))
     scene = dict(H=H, NX=NX, NY=NY, X0=X0, Y1=Y1, heights=_b64(heights.astype(np.float32)), ifc=ifc_out,
                  keep=_b64(keep.astype(np.uint8)), inside=_b64(inside.astype(np.uint8)),
                  ground=ground, ground_res=r, ground_size=[tw, th], buildings=out_b, defences=defs,

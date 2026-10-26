@@ -638,6 +638,40 @@ stayed within 0.1%. `tests/test_ifc.py` covers georeferenced, millimetre and loc
 typed level, the blocking checks, the mesh override and its removal, a report on an engine run, and water getting in
 through open doors but not past barriers.
 
+## Scanned buildings
+
+A building can also come from a scan (`scanbuilding.py`), from the same "Add building" link: a point cloud as LAS or
+LAZ (read with laspy), E57 (pye57) or text (XYZ; PTS with a count on the first line; CSV with or without a header,
+columns found by name or position, colours taken from the last three columns when they look like 0-255 values), or a
+mesh as OBJ, PLY or GLB/glTF (read with trimesh) from a phone scan or photogrammetry. A mesh is turned into points by
+sampling its surface evenly (about 400 per m2, up to 3 million) with its texture or vertex colours; glTF is Y-up by
+definition, and for OBJ and PLY the up axis is the one with a flat bottom (most points within 0.2 m of the lowest).
+A local scan more than 200 units across is offered a units repair (centimetres, or millimetres beyond 2,000). A
+scan placed on the map (such as a phone scan) has no real heights: for telling ground from building it is lined up
+provisionally on the LiDAR, and the level repair then asks before shifting it, so its levels are only as accurate as
+the LiDAR. A scan whose outline is much smaller than the mapped building it stands on (less than two thirds of it,
+typically one side of a house) is offered the mapped outline, keeping the scan's heights and ground. It is stored like an IFC building, so the mesh override, water
+inside, the building report, pins and "Go to" work the same way. Coordinates: a LAS coordinate system is used (and
+converted to British National Grid if it is another); a file with none whose points fall on the area is read as
+British National Grid and noted; otherwise the scan is placed on the map, turned about its own centre. The cloud is
+thinned to one point per 10 cm cube. Ground and building points come from the ASPRS classification (2 ground, 6
+building) when present; otherwise ground is within 0.3 m of the LiDAR, and the building is the points more than 2 m
+above it (and walls above the ground) over the mapped building they sit on, which can take in trees or walls touching
+it and is noted. The outline is the occupancy of the building points on a 0.25 m grid, closed and filled; the
+height comes from the roof (99.5th percentile) and the ground level from the scanned ground within 4 m. The
+scanned ground is compared with the LiDAR: within 0.5 m it is noted; beyond, a repair shifts the scan to match.
+Errors: unreadable files, fewer than 1,000 points, a scan outside the area, no building found, no usable outline,
+or too little ground around the building to check levels. Until doors are marked the floor level is provisional
+(0.15 m above the lowest ground). Doors and windows are then marked in 3D by clicking the scan at each threshold or
+sill (the level is read from the point clicked) and giving a width and height; the lowest door threshold becomes
+the floor level. A scan has no rooms, so its inside is one volume per storey. Up to 150,000 points are kept for the
+3D view, in the scan's colours if it has them.
+
+`tests/test_scan.py` covers LAS, LAZ, unclassified LAS, E57, XYZ, PTS, CSV and PLY point clouds, a georeferenced OBJ,
+a phone-style GLB placed and levelled on the LiDAR, millimetre units, a partial scan, a level offset and its repair, the blocking checks,
+placing a local scan, the mesh override and marked openings, and water getting in through a marked door on an
+engine run.
+
 ## Model notes
 
 - Each area is a 5 or 10 m grid inside the drawn outline, each square split into two triangles; buildings

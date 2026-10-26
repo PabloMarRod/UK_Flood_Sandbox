@@ -22,10 +22,10 @@ the results: depths, hazard to people, buildings, roads and key sites affected, 
 - **Mitigation**: draw walls, embankments, demountable barriers, storage basins, raised kerbs, channel
   deepening, permeable surfaces, rain gardens, swales, tree planting, green roofs, storage tanks, pumps and
   timed flood gates, then compare against the same storm without them.
-- **Drainage networks and IFC buildings**: import a sewer network (SWMM from InfoWorks ICM, SewerGEMS or
-  PCSWMM, or GIS layers) or a building from an IFC model, each checked before it is used. An IFC building
-  replaces the mapped one, shows in 3D, and gets its own report: water at each door against its threshold,
-  against the finished floor level, and the spaces that would take water.
+- **Drainage networks and added buildings**: import a sewer network (SWMM from InfoWorks ICM, SewerGEMS or
+  PCSWMM, or GIS layers), or a building from an IFC model, a point cloud (LAS, LAZ, E57, XYZ, PTS, CSV) or a
+  mesh from a phone scan or photogrammetry (OBJ, PLY, GLB, glTF), each checked before it is used. An added building replaces the mapped one, shows in 3D, and
+  gets its own report: water at each door against its threshold and inside room by room.
 - **Results**: depth over time, maximum depth and speed, hazard to people (Defra/EA method), buildings, roads and
   key sites affected, indicative damage (JRC depth-damage functions), a comparison with the EA national
   surface-water map, and a "difference" view between runs.
