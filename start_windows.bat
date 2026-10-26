@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist ".venv\installed-v8.ok" goto run
+if exist ".venv\installed-v9.ok" goto run
 
 rem UK Flood Sandbox. OpenSWMM 6.0.0a4 ships Windows installers for Python 3.10 to 3.13 only.
 set "PY="
@@ -25,7 +25,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 ".venv\Scripts\python.exe" -m pip install --upgrade pip || goto fail
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt || goto fail
-echo ok> ".venv\installed-v8.ok"
+echo ok> ".venv\installed-v9.ok"
 
 :run
 ".venv\Scripts\python.exe" server.py
