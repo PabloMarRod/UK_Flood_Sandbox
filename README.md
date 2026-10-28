@@ -83,7 +83,7 @@ measures your computer's speed in the background (about a minute) to size its ru
 
 **Optional: river flows in Wales.** Recorded runs on Welsh estuaries can use Natural Resources Wales river
 levels. Get a free key at https://api-portal.naturalresources.wales/, copy `settings.example.json` to
-`settings.json` and add the key. Keep it private: `settings.json` is excluded from the repository.
+`settings.json` and add the key.
 
 ## How it works, briefly
 
@@ -100,16 +100,14 @@ Details, assumptions, sources and test results: [docs/technical-notes.md](docs/t
   roofs drain to the ground beside each building. Without a network, small, frequent storms flood more than they
   would in reality. Imported networks start empty (no foul or dry-weather flow), and gully capacities, cover
   openings and chamber sizes are assumptions unless the data gives them.
-- Water entering buildings rests on limited evidence: door leakage on laboratory tests of six UK doors up to
-  0.6 m, window behaviour and wall failure on an analysis of modern English homes (see the technical notes for
-  the sources). Airbricks and stairs are not modelled, and wall failure is flagged, not modelled.
+- Water entering buildings rests on limited evidence: door leakage, window behaviour, and wall failure based on an analysis of modern English homes (see the technical notes for
+  the sources). Airbricks and stairs are not modelled.
 - Phone scans have no real heights: they are levelled on the LiDAR, so their levels are only as accurate as it is.
   Unclassified scans may include trees or walls touching the building.
-- River beds of most estuaries are assumed; four (Thames, Humber, Severn, Exe) are calibrated against tide gauges.
+- River beds of most estuaries are assumed; except four (Thames, Humber, Severn, Exe) that are calibrated against tide gauges.
   Several estuaries use a tide gauge some distance away.
-- Flood defence data is incomplete in places, and absent in Scotland and Northern Ireland.
-- Imports have been tested on synthetic files; real drainage, IFC and scan files may raise cases the checks don't
-  yet cover. Reports of these are very welcome.
+- Flood defence data is incomplete in places (England and Wales) and absent in Scotland and Northern Ireland.
+- Import of drainage, IFC and scan files may raise cases the checks don't yet cover. Reports of these are very welcome.
 - The engine is an alpha release (OpenSWMM 6.0.0a4), pinned in `requirements.txt`.
 
 ## Documentation
