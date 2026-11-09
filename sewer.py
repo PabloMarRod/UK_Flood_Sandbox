@@ -249,9 +249,140 @@ def _num(v):
         return None
 
 
+FT = 0.3048                                                  # m per foot
+US_FLOW = {"CFS": 0.028316846592, "GPM": 6.30901964e-5, "MGD": 0.0438126364}   # m3/s per unit (US gallons)
+SI_FLOW = {"LPS": 0.001, "MLD": 1000 / 86400}                                  # the model itself runs in CMS
+
+
+def _to_cms(sec, units):
+    """Rewrite a SWMM file's sections in place to metres and m3/s (the units of the app's model), as SWMM itself reads
+    each field (xsect.c, link.c, node.c): from US units (feet and CFS, GPM or MGD), or from LPS or MLD, where only
+    flows and the coefficients and curves that carry them change. Coordinates are left alone: map units are not tied
+    to FLOW_UNITS, and the coordinate check deals with them. Returns how many values were converted."""
+    us = units in US_FLOW
+    q = US_FLOW[units] if us else SI_FLOW[units]
+    L = FT if us else 1.0                                    # length factor
+    IN = 25.4 if us else 1.0                                 # rain-depth units (in -> mm)
+    n = [0]
+    def put(p, k, f):
+        if f != 1 and k < len(p) and _num(p[k]) is not None:
+            p[k] = f"{_num(p[k]) * f:.10g}"; n[0] += 1
+    def pairs(p, k, fx, fy):                                 # x y x y ... from token k
+        for j in range(k, len(p) - 1, 2): put(p, j, fx); put(p, j + 1, fy)
+    weir_c = lambda: q / L ** 2.5                           # Q = C b h^1.5 or C S h^2.5: C in flow units / length^2.5
+    for p in sec.get("OPTIONS", []):
+        if p[0].upper() == "FLOW_UNITS" and len(p) > 1: p[1] = "CMS"
+    dw = any(p[0].upper() == "FORCE_MAIN_EQUATION" and len(p) > 1 and p[1].upper() == "D-W" for p in sec.get("OPTIONS", []))
+    for p in sec.get("JUNCTIONS", []):                       # Name Elev Ymax Y0 Ysur Apond
+        for k in (1, 2, 3, 4): put(p, k, L)
+        put(p, 5, L ** 2)
+    for p in sec.get("OUTFALLS", []):                        # Name Elev Type [Stage] ...
+        put(p, 1, L)
+        if len(p) > 3 and p[2].upper() == "FIXED": put(p, 3, L)
+    for p in sec.get("DIVIDERS", []):                        # Name Elev Link Type [params] Ymax Y0 Ysur Apond
+        if len(p) < 4: continue
+        put(p, 1, L); t = p[3].upper(); extra = {"CUTOFF": 1, "TABULAR": 1, "WEIR": 3}.get(t, 0)
+        if t in ("CUTOFF", "WEIR"): put(p, 4, q)
+        if t == "WEIR": put(p, 5, L); put(p, 6, q / L ** 1.5)       # Qmax = C dh^1.5
+        for k in (4 + extra, 5 + extra, 6 + extra): put(p, k, L)
+        put(p, 7 + extra, L ** 2)
+    for p in sec.get("STORAGE", []):                         # Name Elev Ymax Y0 Shape {Curve | A1 A2 A0} Ysur Fevap Psi Ksat IMD
+        if len(p) < 5: continue
+        for k in (1, 2, 3): put(p, k, L)
+        k = 5
+        if p[4].upper() == "FUNCTIONAL":
+            b = _num(p[6]) if len(p) > 6 else 0
+            put(p, 5, L ** (2 - (b or 0))); put(p, 7, L ** 2); k = 8
+        elif p[4].upper() == "TABULAR":
+            k = 6
+        put(p, k, L); put(p, k + 2, IN); put(p, k + 3, IN)     # surcharge depth; suction head (in) and Ksat (in/h)
+    for p in sec.get("CONDUITS", []):                        # Name From To Length N Z1 Z2 Q0 Qmax
+        for k in (3, 5, 6): put(p, k, L)
+        put(p, 7, q); put(p, 8, q)
+    for p in sec.get("XSECTIONS", []):                       # Name Shape G1 G2 G3 G4 Barrels Culvert
+        if len(p) < 3: continue
+        s = p[1].upper()
+        if s in ("HORIZ_ELLIPSE", "VERT_ELLIPSE", "ARCH"):
+            if (_num(p[3]) if len(p) > 3 else 0): put(p, 2, L); put(p, 3, L)   # G2 = 0: G1 is a standard size code
+        elif s in ("RECT_TRIANGULAR", "RECT_ROUND", "MODBASKETHANDLE"):
+            for k in (2, 3, 4): put(p, k, L)
+        elif s in ("FILLED_CIRCULAR", "RECT_CLOSED", "RECT_OPEN", "TRAPEZOIDAL", "TRIANGULAR", "PARABOLIC", "POWER"):
+            put(p, 2, L); put(p, 3, L)                       # TRAPEZOIDAL G3, G4 are slopes, POWER G3 an exponent
+        elif s == "FORCE_MAIN":
+            put(p, 2, L)
+            if dw: put(p, 3, IN)                             # Darcy-Weisbach roughness height (in -> mm)
+        elif s not in ("IRREGULAR", "STREET", "DUMMY"):
+            put(p, 2, L)                                      # circular, egg, CUSTOM (full height) and the rest
+    for p in sec.get("WEIRS", []):                           # Name From To Type CrestHt Cd Gated EC Cd2 Sur RoadWidth RoadSurf
+        put(p, 4, L); put(p, 5, weir_c())
+        if len(p) > 3 and p[3].upper() == "TRAPEZOIDAL": put(p, 8, weir_c())
+        put(p, 10, L)
+    for p in sec.get("ORIFICES", []):                        # Name From To Type Offset Cd ...
+        put(p, 4, L)
+    for p in sec.get("OUTLETS", []):                         # Name From To Offset Type {Curve | C n} Gated
+        put(p, 3, L)
+        if len(p) > 6 and p[4].upper().startswith("FUNCTIONAL"):
+            e = _num(p[6]) or 0; put(p, 5, q / L ** e)
+    for p in sec.get("PUMPS", []):                           # Name From To Curve Status Startup Shutoff
+        put(p, 5, L); put(p, 6, L)
+    kind, fx = {}, {"STORAGE": (L, L ** 2), "DIVERSION": (q, q), "TIDAL": (1, L), "RATING": (L, q),
+                    "PUMP1": (L ** 3, q), "PUMP2": (L, q), "PUMP3": (L, q), "PUMP4": (L, q), "PUMP5": (L, q),
+                    "WEIR": (L, weir_c())}
+    for p in sec.get("CURVES", []):                          # Name [Type] x y [x y ...]
+        k = 1
+        if len(p) > 1 and _num(p[1]) is None: kind[p[0]] = p[1].upper(); k = 2
+        f = fx.get(kind.get(p[0]))
+        if f: pairs(p, k, *f)
+    for p in sec.get("TRANSECTS", []):                       # NC / X1 Name Nsta Xleft Xright 0 0 Lf Wf Eoffset / GR z x ...
+        t = p[0].upper()
+        if t == "X1": put(p, 3, L); put(p, 4, L); put(p, 9, L)          # Eoffset is the 9th value (transect.c)
+        elif t == "GR": pairs(p, 1, L, L)
+    return n[0]
+
+
+def read_transects(sec):
+    """[TRANSECTS] (HEC-2 style, as SWMM reads it in transect.c): name -> dict(n=(left, right, channel) Manning's n,
+    xl, xr = bank stations, lf = length factor, pts = [(station, elevation)]) with the station factor and elevation
+    offset applied. Malformed transects come back with bad=<reason>."""
+    out, nc, cur = {}, [0.0, 0.0, 0.0], None
+    for p in sec.get("TRANSECTS", []):
+        t = p[0].upper(); v = [_num(x) for x in p[1:]]
+        if t == "NC" and len(v) >= 3 and None not in v[:3]:
+            nc = [v[0], v[1], v[2]] if v[2] > 0 else [v[0], v[1], nc[2]]
+        elif t == "X1" and len(p) >= 10:
+            xf = v[7] or 1.0
+            cur = dict(n=(nc[0] or nc[2], nc[1] or nc[2], nc[2]), xl=(v[2] or 0) * xf, xr=(v[3] or 0) * xf,
+                       lf=v[6] or 1.0, xf=xf, eo=v[8] or 0.0, pts=[])
+            out[p[1]] = cur
+        elif t == "GR" and cur is not None:
+            for j in range(0, len(v) - 1, 2):
+                if v[j] is None or v[j + 1] is None: cur["bad"] = "a value that isn't a number"; continue
+                cur["pts"].append((v[j + 1] * cur["xf"], v[j] + cur["eo"]))
+    for t in out.values():
+        z = [e for _, e in t["pts"]]
+        if t.get("bad"): continue
+        if len(z) < 2: t["bad"] = "fewer than two stations"
+        elif max(z) <= min(z): t["bad"] = "no depth"
+        elif not t["n"][2] or t["n"][2] <= 0: t["bad"] = "no channel Manning's n"
+        elif any(b[0] < a[0] for a, b in zip(t["pts"], t["pts"][1:])): t["bad"] = "stations not in order"
+    return out
+
+
 def from_inp(src):
     """Network from a SWMM file. Returns (net, issues, coordinates are in the file's own system)."""
     sec = read_inp(src); iss = []
+    units = next((p[1].upper() for p in sec.get("OPTIONS", []) if p[0].upper() == "FLOW_UNITS" and len(p) > 1), "CMS")
+    if units in US_FLOW:
+        nv = _to_cms(sec, units)
+        iss.append(issue("W_US_UNITS", "warn", "Converted from US units", [f"FLOW_UNITS {units}", f"{nv} values"],
+                         f"Levels, depths, lengths and sizes were converted from feet to metres and flows from {units} "
+                         "to m3/s, with curves and weir and outlet coefficients to match. Check the levels against "
+                         "the map: they must be above Ordnance Datum."))
+    elif units in SI_FLOW:
+        nv = _to_cms(sec, units)
+        if nv: iss.append(issue("W_FLOW_UNITS", "warn", "Flows converted to m3/s", [f"FLOW_UNITS {units}", f"{nv} values"],
+                                f"The model runs in m3/s: pump, rating and diversion curves and weir, outlet and "
+                                f"divider coefficients were converted from {units}."))
     offsets = "DEPTH"
     for p in sec.get("OPTIONS", []):
         if p[0].upper() == "LINK_OFFSETS" and len(p) > 1: offsets = p[1].upper()
@@ -300,12 +431,11 @@ def from_inp(src):
     for nid, n in nodes.items():
         n["x"], n["y"] = xy.get(nid, (None, None))
     xs = {p[0]: p for p in sec.get("XSECTIONS", [])}
-    bad_shape, open_ch, dummy, custom = [], [], [], {}
-    units = next((p[1].upper() for p in sec.get("OPTIONS", []) if p[0].upper() == "FLOW_UNITS" and len(p) > 1), "CMS")
-    if units in ("CFS", "GPM", "MGD"):
-        iss.append(issue("E_US_UNITS", "error", "The file uses US units", [f"FLOW_UNITS {units}"],
-                         "Lengths and levels would be in feet. Convert the model to SI units (CMS, LPS or MLD) in the "
-                         "source software and export again."))
+    bad_shape, streets, chans, dummy, custom = [], [], [], [], {}
+    transects = read_transects(sec)
+    verts = defaultdict(list)                                # a channel's bends between its nodes
+    for p in sec.get("VERTICES", []):
+        if len(p) >= 3 and _num(p[1]) is not None and _num(p[2]) is not None: verts[p[0]].append((_num(p[1]), _num(p[2])))
     for p in sec.get("CONDUITS", []):
         if len(p) < 5: continue
         lid = p[0]
@@ -315,7 +445,8 @@ def from_inp(src):
             while f"{lid}_{n_}" in links: n_ += 1
             lid = f"{lid}_{n_}"
         shape = x[1].upper() if x and len(x) > 1 else None
-        if shape in ("IRREGULAR", "STREET"): open_ch.append(f"{lid} ({shape})")
+        if shape == "STREET": streets.append(lid)
+        elif shape == "IRREGULAR": chans.append(lid)
         elif shape == "DUMMY": dummy.append(lid)
         elif shape and shape not in SWMM_SHAPES: bad_shape.append(f"{lid} ({shape})")
         if shape == "CUSTOM": custom[lid] = x[3] if len(x) > 3 else None
@@ -332,10 +463,29 @@ def from_inp(src):
                           us_inv=usi, ds_inv=dsi, geom_len=None,
                           xs_raw=list(x[1:]) if x else None,              # written back as given (side slopes, barrels)
                           shape_curve=x[3] if shape == "CUSTOM" and len(x) > 3 else None)
-    if open_ch: iss.append(issue("E_OPEN_CHANNEL", "error", "Open channels described by transects or street sections",
-                                 open_ch, "Open channels, ditches and streams are already on the 2D surface from the LiDAR; "
-                                 "importing them as well would carry the same water twice. Leave them out of the export, "
-                                 "or give piped sections a standard or custom closed shape."))
+        if shape == "IRREGULAR":
+            t = transects.get(x[2]) if len(x) > 2 else None
+            links[lid].update(channel=True, transect=x[2] if len(x) > 2 else None, g2=None, path=verts.get(p[0], []),
+                              g1=(max(z for _, z in t["pts"]) - min(z for _, z in t["pts"])) if t and not t.get("bad") else None)
+    if streets: iss.append(issue("E_STREET", "error", "Street sections", streets,
+                                 "Streets are already on the 2D surface from the LiDAR; importing them as well would "
+                                 "carry the same water twice. Leave them out of the export."))
+    if chans:
+        no_t = [f"{lid}: {links[lid]['transect'] or 'no transect named'}" for lid in chans
+                if links[lid]["transect"] not in transects]
+        bad_t = sorted({f"{links[lid]['transect']} ({transects[links[lid]['transect']]['bad']})" for lid in chans
+                        if links[lid]["transect"] in transects and transects[links[lid]["transect"]].get("bad")})
+        if no_t: iss.append(issue("E_TRANSECT", "error", "Open channels whose transect isn't in the file", no_t,
+                                  "Add the missing [TRANSECTS] entries in the source model."))
+        if bad_t: iss.append(issue("E_TRANSECT_BAD", "error", "Transects that can't be read", bad_t,
+                                   "Check the transect in the source model: it needs a channel Manning's n and at least "
+                                   "two stations, in order, with some depth."))
+        if not no_t and not bad_t:
+            iss.append(issue("F_CHANNEL", "fix", "Open channels described by transects", chans,
+                             detail="The LiDAR surface already carries what it can see of each channel. The part it "
+                                    "can't (below the water surface, or narrower than a cell) would be missing.",
+                             fix="Carry the part of each channel below the LiDAR surface in 1D, linked to the surface "
+                                 "along its length; the surface carries the rest"))
     if dummy: iss.append(issue("E_DUMMY", "error", "Dummy links (no cross-section)", dummy,
                                "They carry no geometry for this model. Replace them with a short pipe or remove them."))
     curves = defaultdict(list)
@@ -414,7 +564,9 @@ def from_inp(src):
     missing_xy = [k for k, n in nodes.items() if n["x"] is None]
     if missing_xy: iss.append(issue("E_NO_XY", "error", "Nodes without coordinates", missing_xy,
                                     "Every node needs a position in [COORDINATES]."))
-    return dict(nodes=nodes, links=links, curves=net_curves), iss
+    used_t = {l["transect"] for l in links.values() if l.get("channel")}
+    return dict(nodes=nodes, links=links, curves=net_curves,
+                transects={k: v for k, v in transects.items() if k in used_t}), iss
 
 
 def from_gis(src, mapping):
@@ -709,6 +861,7 @@ def reproject(net, epsg):
     for n in net["nodes"].values():
         if n.get("x") is not None: n["x"], n["y"] = tf.transform(n["x"], n["y"])
     for l in net["links"].values():
+        if l.get("path"): l["path"] = [tf.transform(*e) for e in l["path"]]
         if l.get("ends"): l["ends"] = [tf.transform(*e) for e in l["ends"]]
         if l.get("ends"): l["geom_len"] = math.dist(*l["ends"]) if l.get("geom_len") is None else l["geom_len"]
 
@@ -735,6 +888,11 @@ def _components(net):
 def _c(links):
     """The conduits among the links (weirs, orifices, outlets and pumps have no pipe size or inverts)."""
     return {k: l for k, l in links.items() if l.get("type", "conduit") == "conduit"}
+
+
+def _p(links):
+    """The pipes: conduits other than open channels (a channel's size and roughness come from its transect)."""
+    return {k: l for k, l in _c(links).items() if not l.get("channel")}
 
 
 def analyse(net, kind, ground, accepted, base_issues):
@@ -850,16 +1008,16 @@ def analyse(net, kind, ground, accepted, base_issues):
                         "SWMM puts flap valves on outfalls, weirs and flow controls only; these are ignored."))
 
     # sizes
-    sizes = [l["g1"] for l in _c(links).values() if l["g1"]]
+    sizes = [l["g1"] for l in _p(links).values() if l["g1"]]
     if sizes and np.median(sizes) > 20:
         if add(issue("F_MM", "fix", "Pipe sizes look like millimetres", [f"median {np.median(sizes):g}"],
                      fix="Divide sizes by 1,000 to get metres")):
-            for l in _c(links).values():
+            for l in _p(links).values():
                 for g in ("g1", "g2"):
                     if l[g]: l[g] /= 1000
         else:
             return iss, net
-    miss = [lid for lid, l in _c(links).items() if not l["g1"] or l["g1"] <= 0]
+    miss = [lid for lid, l in _p(links).items() if not l["g1"] or l["g1"] <= 0]
     if miss:
         if len(miss) > MAX_MISSING_SIZE * len(links):
             add(issue("E_SIZE", "error", "Too many pipes without a size", miss,
@@ -876,13 +1034,25 @@ def analyse(net, kind, ground, accepted, base_issues):
                 l["g1"] = near[0] if near else 0.225; l["size_filled"] = True
         else:
             return iss, net
-    big = [f"{lid} ({l['g1']:g} m)" for lid, l in _c(links).items() if l["g1"] and l["g1"] > 4]
+    big = [f"{lid} ({l['g1']:g} m)" for lid, l in _p(links).items() if l["g1"] and l["g1"] > 4]
     if big:
         add(issue("E_SIZE_BIG", "error", "Implausibly large pipes", big, "Check the size units in the source data."))
         return iss, net
     for l in _c(links).values():
         if l["shape"] in ("RECT_CLOSED", "RECT_OPEN", "ELLIPTICAL", "ARCH") and not l.get("g2"):
             l["g2"] = l["g1"]
+
+    # open channels must stay out of tidal reaches: the estuary model sets the water level there
+    tidal = []
+    for lid, l in _c(links).items():
+        if not l.get("channel"): continue
+        geo, at = channel_line(net, l)
+        if any(ground.tag.get(ground.cell(*at(f))) == "tidal" for f in np.linspace(0, 1, max(2, int(geo / ground.H) + 1))):
+            tidal.append(lid)
+    if tidal:
+        add(issue("E_CHANNEL_TIDAL", "error", "Open channels in a tidal reach", tidal,
+                  "The estuary model sets the water level in tidal rivers. Leave these channels out of the export."))
+        return iss, net
 
     # levels
     gz = {k: ground.at(n["x"], n["y"]) for k, n in nodes.items()}
@@ -926,7 +1096,7 @@ def analyse(net, kind, ground, accepted, base_issues):
                 if l["ds_inv"] is None: l["ds_inv"] = nodes[l["ds"]]["invert"]
         else:
             return iss, net
-    above = [lid for lid, l in _c(links).items()
+    above = [lid for lid, l in _p(links).items()
              for e, key in ((l["us"], "us_inv"), (l["ds"], "ds_inv"))
              if nodes[e].get("cover") is not None and l[key] + l["g1"] > nodes[e]["cover"] + 0.05 and nodes[e]["kind"] != "outfall"]
     if above:
@@ -954,8 +1124,8 @@ def analyse(net, kind, ground, accepted, base_issues):
         return iss, net
 
     # roughness
-    rs = [l["n"] for l in _c(links).values() if l["n"] is not None]
-    odd = [lid for lid, l in _c(links).items() if l["n"] is None or not (0.008 <= l["n"] <= 0.05)]
+    rs = [l["n"] for l in _p(links).values() if l["n"] is not None]
+    odd = [lid for lid, l in _p(links).items() if l["n"] is None or not (0.008 <= l["n"] <= 0.05)]
     if odd:
         cw = rs and np.median(rs) > 0.05
         if add(issue("F_ROUGH", "fix", "Roughness missing or not a Manning's n", odd,
@@ -1049,11 +1219,24 @@ def analyse(net, kind, ground, accepted, base_issues):
             return iss, net
 
     # warnings
+    on_chan = {e for l in links.values() if l.get("channel") for e in (l["us"], l["ds"])}   # tops set by the surface
     diff = [f"{k} ({n['cover'] - n['ground']:+.1f} m)" for k, n in nodes.items()
-            if n.get("cover") is not None and n.get("ground") is not None and not n.get("cover_filled")
+            if n.get("cover") is not None and n.get("ground") is not None and not n.get("cover_filled") and k not in on_chan
             and abs(n["cover"] - n["ground"]) > 0.5]
     if diff: add(issue("W_COVER", "warn", "Cover levels differ from the LiDAR ground by more than 0.5 m", diff,
                        "The model surface uses the LiDAR ground; each manhole reaches up to it."))
+    seen = []
+    for lid, l in _c(links).items():
+        if not l.get("channel") or l["us_inv"] is None or l["ds_inv"] is None: continue
+        geo, at = channel_line(net, l)
+        fs = np.linspace(0, 1, max(2, int(geo / (ground.H / 2)) + 1))
+        z = ground.at_many(*zip(*[at(f) for f in fs]))
+        hid = z - (l["us_inv"] + (l["ds_inv"] - l["us_inv"]) * fs)
+        if np.isfinite(hid).any() and np.nanmin(hid) < CHAN_MIN_DEPTH: seen.append(lid)
+    if seen: add(issue("W_CHANNEL_SEEN", "warn", "Open channels whose bed the LiDAR already sees", seen,
+                       f"Somewhere along these reaches the bed is less than {CHAN_MIN_DEPTH * 100:.0f} cm below the "
+                       "LiDAR surface, so the surface already carries the channel there. They are left to the "
+                       "surface; the rest of the channel is carried in 1D."))
     adv = [lid for lid, l in _c(links).items() if l["ds_inv"] > l["us_inv"] + 0.01]
     if adv: add(issue("W_ADVERSE", "warn", "Pipes falling uphill", adv, "Imported as they are; check if this is intended."))
     short = [lid for lid, l in _c(links).items() if (l.get("length") or l.get("geom_len") or 0) < 2]
@@ -1135,9 +1318,9 @@ def save(A, result, source_name):
                         for k, n in net["nodes"].items()},
                  links={k: {f: v for f, v in l.items() if f in ("us", "ds", "shape", "g1", "g2", "us_inv", "ds_inv", "length",
                                                                   "geom_len", "n", "size_filled", "ends", "type", "params", "xs", "xs_raw",
-                                                                  "curve", "crest")}
+                                                                  "curve", "crest", "channel", "transect", "path")}
                         for k, l in net["links"].items()},
-                 curves=net.get("curves") or {}, source=source_name, summary=result["summary"],
+                 curves=net.get("curves") or {}, transects=net.get("transects") or {}, source=source_name, summary=result["summary"],
                  issues=[{k: v for k, v in i.items() if k != "ids"} for i in result["issues"]])
     (d / "network.json").write_text(json.dumps(clean))
     return clean
@@ -1196,7 +1379,95 @@ def cover_kind(v):
     return "?"
 
 
-def model_lines(A, q, lines, cache, net, sidecar=None):
+# ------------------------------------------------------------------------------------------------ open channels
+CHAN_LINK_MAX = 4.0        # m2, largest exchange opening each way between a channel node and its cell
+CHAN_MIN_DEPTH = 0.10      # m, reaches with less than this hidden below the LiDAR surface are left to the surface
+CHAN_SPLIT_CELLS = 2       # a channel reach is split into pieces about this many cells long
+
+
+def clip_transect(pts, depth):
+    """A transect's (station, elevation) points cut off at `depth` above its lowest point: what lies above is on
+    the 2D surface. Returns the points and the top width at that level."""
+    zmin = min(z for _, z in pts); top = zmin + depth
+    if max(z for _, z in pts) <= top:
+        return list(pts), pts[-1][0] - pts[0][0]
+    out = []
+    for (x1, z1), (x2, z2) in zip(pts, pts[1:]):
+        if not out: out.append((x1, min(z1, top)))
+        if (z1 - top) * (z2 - top) < 0:                           # crosses the cut: add the crossing point
+            out.append((x1 + (x2 - x1) * (top - z1) / (z2 - z1), top))
+        out.append((x2, min(z2, top)))
+    k0 = next(k for k, (_, z) in enumerate(out) if z < top) - 1    # trim flat runs at the cut beyond the outer crossings
+    k1 = len(out) - next(k for k, (_, z) in enumerate(reversed(out)) if z < top)
+    out = out[max(k0, 0):k1 + 1]
+    wet = [x for x, z in out if z <= top]
+    return out, max(wet) - min(wet)
+
+
+def section(pts, y):
+    """Flow area, wetted perimeter and top width of a transect at depth y above its lowest point."""
+    zmin = min(z for _, z in pts); h = zmin + y; a = per = 0.0; xs = []
+    for (x1, z1), (x2, z2) in zip(pts, pts[1:]):
+        if z1 >= h and z2 >= h: continue
+        if z1 < h and z2 < h: xa, za, xb, zb = x1, z1, x2, z2
+        elif z1 < h: xa, za, xb, zb = x1, z1, x1 + (x2 - x1) * (h - z1) / (z2 - z1), h
+        else: xa, za, xb, zb = x1 + (x2 - x1) * (h - z1) / (z2 - z1), h, x2, z2
+        a += (xb - xa) * ((h - za) + (h - zb)) / 2; per += math.hypot(xb - xa, zb - za); xs += [xa, xb]
+    return a, per, (max(xs) - min(xs)) if xs else 0.0
+
+
+def normal_depth(pts, n, slope, Q):
+    """Manning normal depth for flow Q in a transect (capped at its full depth)."""
+    ymax = max(z for _, z in pts) - min(z for _, z in pts)
+    def q(y):
+        a, per, _ = section(pts, y)
+        return a ** (5 / 3) / per ** (2 / 3) * math.sqrt(slope) / n if per > 0 else 0.0
+    if Q <= 0: return 0.0
+    if q(ymax) <= Q: return ymax
+    lo, hi = 0.0, ymax
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if q(mid) < Q else (lo, mid)
+    return (lo + hi) / 2
+
+
+def channel_line(net, l):
+    """A channel reach as a polyline (its nodes and any bends between them) and points along it every `step` m:
+    returns the polyline and a function giving the point and fraction of the length at distance d."""
+    a, b = net["nodes"][l["us"]], net["nodes"][l["ds"]]
+    pts = [(a["x"], a["y"])] + [tuple(v) for v in (l.get("path") or [])] + [(b["x"], b["y"])]
+    seg = [math.dist(p, q) for p, q in zip(pts, pts[1:])]; tot = sum(seg) or 1e-9
+    def at(f):
+        d, k = f * tot, 0
+        while k < len(seg) - 1 and d > seg[k]: d -= seg[k]; k += 1
+        g = d / seg[k] if seg[k] > 0 else 0
+        return pts[k][0] + (pts[k + 1][0] - pts[k][0]) * g, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * g
+    return tot, at
+
+
+def split_channels(net, H):
+    """A copy of the network in which each open-channel reach longer than about two cells is split into pieces of
+    about two cells, with junctions between them, so the channel meets the surface along its length."""
+    nodes = {k: dict(v) for k, v in net["nodes"].items()}; links = {}
+    for lid, l in net["links"].items():
+        if not l.get("channel"):
+            links[lid] = l; continue
+        geo, at = channel_line(net, l)
+        L = l.get("length") or geo
+        m = max(1, int(round(geo / (CHAN_SPLIT_CELLS * H))))
+        ids = [l["us"]] + [f"{lid}~{k}" for k in range(1, m)] + [l["ds"]]
+        for k in range(1, m):
+            f = k / m; x, y = at(f)
+            nodes[ids[k]] = dict(x=x, y=y, kind="junction", invert=l["us_inv"] + (l["ds_inv"] - l["us_inv"]) * f, added=True)
+        for k in range(m):
+            links[lid if m == 1 else f"{lid}~s{k + 1}"] = dict(
+                l, us=ids[k], ds=ids[k + 1], length=L / m, parent=lid, path=[at((k + f) / m) for f in (0.25, 0.5, 0.75)] if m > 1 else l.get("path"),
+                us_inv=l["us_inv"] + (l["ds_inv"] - l["us_inv"]) * k / m,
+                ds_inv=l["us_inv"] + (l["ds_inv"] - l["us_inv"]) * (k + 1) / m)
+    return dict(net, nodes=nodes, links=links)
+
+
+def model_lines(A, q, lines, cache, net, sidecar=None, heads=()):
     """SWMM lines for the network, coupled to the 2D surface. Edits triangle tags in place.
 
     Each manhole is a storage node with its chamber's plan area. How it meets the surface depends on its cover:
@@ -1205,8 +1476,15 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
               opening (-> cover node -> triangle B)
       grated  one two-way link through the grate's open area
       sealed  no link: the manhole pressurises (a junction with a large surcharge depth)
+
+    Open channels (transects) carry in 1D only the part of the channel below the 2D surface; their nodes have one
+    two-way link to the cell they sit in. `heads` are the river inflows (id, x, y, q0 = base flow): one within two
+    cells of a channel's upstream end enters that node instead of the surface (out["captured"]), and its base flow
+    sets the channel's starting flow and depths downstream.
     """
     H, X0, Y1 = A["H"], A["X0"], A["Y1"]
+    if any(l.get("channel") for l in net["links"].values()):
+        net = split_channels(net, H)
     t0 = lines.index("[2D_TRIANGLES]") + 1; v0 = lines.index("[2D_VERTICES]") + 1
     tsq = np.load(cache / "mesh.npz")["tsq"]
     first = {}
@@ -1244,13 +1522,80 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
     gully_a = gully / (0.65 * math.sqrt(2 * 9.81 * 0.3)) if gully > 0 else 0     # orifice area passing the capacity at 0.3 m head
     cover_d = math.sqrt(4 * cover_a / math.pi)
     out = dict(junctions=[], outfalls=[], storage=[], conduits=[], orifices=[], weirs=[], outlets=[], pumps=[], curves=[],
-               xsections=[], coords=[], nodemap=[])
+               xsections=[], coords=[], nodemap=[], transects=[], captured={})
     cname = lambda c: "SC_" + re.sub(r"[^A-Za-z0-9_.\-]", "_", str(c))[:28]
     need_curves = set()
     used, sid = set(), {}
     for k in net["nodes"]: sid[k] = swmm_id(k, used)
-    count = dict(solid=0, grated=0, sealed=0, unlinked=0)
+    count = dict(solid=0, grated=0, sealed=0, unlinked=0, channel=0)
     side = {}
+
+    # open channels: the part of each transect below the 2D surface, the inflows they take, their starting state
+    chan = {k: l for k, l in net["links"].items() if l.get("channel")}
+    chan_nodes = {e for l in chan.values() for e in (l["us"], l["ds"]) if net["nodes"][e]["kind"] == "junction"}
+    def zg(x, y):                                            # surface level at a point (nearest cell of the mesh)
+        j0, i0 = int((Y1 - y) // H), int((x - X0) // H)
+        for rr in range(4):
+            c = [(j, i) for j in range(j0 - rr, j0 + rr + 1) for i in range(i0 - rr, i0 + rr + 1) if (j, i) in first]
+            if c: return zc(*min(c, key=lambda c_: (c_[0] - j0) ** 2 + (c_[1] - i0) ** 2))
+        return None
+    cap = {}
+    for lid, l in chan.items():
+        geo, at = channel_line(net, l)
+        m = max(2, int(math.ceil(geo / (H / 2))) + 1)
+        for f in np.linspace(0, 1, m):
+            z = zg(*at(f))
+            if z is None: continue
+            par = l.get("parent", lid)
+            cap[par] = min(cap.get(par, 1e9), z - (l["us_inv"] + (l["ds_inv"] - l["us_inv"]) * f))
+    # reaches whose bed the LiDAR already sees (less than CHAN_MIN_DEPTH hidden) add nothing in 1D: a few cm of
+    # channel would only surcharge. They are left to the surface, with any node no longer joined to anything
+    seen = {par for par, c in cap.items() if c < CHAN_MIN_DEPTH}
+    if seen:
+        out["channel_seen"] = sorted(seen)
+        links_ = {k: l for k, l in net["links"].items() if not (l.get("channel") and l.get("parent", k) in seen)}
+        joined = {e for l in links_.values() for e in (l["us"], l["ds"])}
+        net = dict(net, links=links_, nodes={k: n for k, n in net["nodes"].items() if k in joined})
+        chan = {k: l for k, l in chan.items() if l.get("parent", k) not in seen}
+        chan_nodes = {e for l in chan.values() for e in (l["us"], l["ds"]) if net["nodes"][e]["kind"] == "junction"}
+    clipped, used_t = {}, set()
+    for lid, l in chan.items():
+        par = l.get("parent", lid)
+        if par in clipped: continue
+        t = net["transects"][l["transect"]]
+        pts, w = clip_transect(t["pts"], max(CHAN_MIN_DEPTH, cap.get(par, 1e9)))
+        tn = swmm_id(f"T_{par}", used_t)
+        clipped[par] = (tn, pts, w, t["n"])
+        out["transects"] += [f"NC {t['n'][0]:g} {t['n'][1]:g} {t['n'][2]:g}",
+                             f"X1 {tn} {len(pts)} {t['xl']:.3f} {t['xr']:.3f} 0 0 {t['lf']:g} 0 0"]
+        for j in range(0, len(pts), 5):
+            out["transects"].append("GR " + " ".join(f"{z:.3f} {x:.3f}" for x, z in pts[j:j + 5]))
+    has_in = {l["ds"] for l in chan.values()}
+    ends = [k for k in chan_nodes if k not in has_in]
+    q0n = defaultdict(float)
+    for h in heads:
+        if not ends: break
+        e = min(ends, key=lambda k: math.hypot(net["nodes"][k]["x"] - h["x"], net["nodes"][k]["y"] - h["y"]))
+        if math.hypot(net["nodes"][e]["x"] - h["x"], net["nodes"][e]["y"] - h["y"]) <= 2 * H:
+            out["captured"][h["id"]] = sid[e]; q0n[e] += max(0.0, float(h.get("q0") or 0))
+    down = defaultdict(list)
+    for lid, l in chan.items(): down[l["us"]].append(lid)
+    qlink = defaultdict(float)
+    for e, qv in q0n.items():                                # base flow runs down the channel (the larger branch)
+        cur, seen = e, set()
+        while down.get(cur) and cur not in seen:
+            seen.add(cur); lid = max(down[cur], key=lambda k_: clipped[chan[k_].get("parent", k_)][2])
+            qlink[lid] += qv; cur = chan[lid]["ds"]
+    y0n, wn = defaultdict(float), defaultdict(float)
+    for lid, l in chan.items():
+        _, pts, w, nn = clipped[l.get("parent", lid)]
+        S = max(1e-4, (l["us_inv"] - l["ds_inv"]) / max(l.get("length") or 1.0, 1.0))
+        a_, per_, _ = section(pts, max(z for _, z in pts) - min(z for _, z in pts))
+        qfull = a_ ** (5 / 3) / per_ ** (2 / 3) * math.sqrt(S) / nn[2] if per_ > 0 else 0.0
+        if lid in qlink: qlink[lid] = min(qlink[lid], qfull)   # base flow beyond the cut channel is on the surface
+        y = normal_depth(pts, nn[2], S, qlink.get(lid, 0.0))
+        for e in (l["us"], l["ds"]):
+            y0n[e] = max(y0n[e], y); wn[e] = max(wn[e], w)
     for k, n in net["nodes"].items():
         node = sid[k]
         out["coords"].append(f"{node} {n['x']:.2f} {n['y']:.2f}")
@@ -1269,6 +1614,23 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
                 for t in tris(*c): tags(t)[5] = tg
                 taken.add(c); out["nodemap"].append(f"{tg} {node} 0.65 4.000")
             continue
+        if k in chan_nodes:
+            # open channel: a junction with its top at the surface, linked both ways to its cell. Water above the
+            # top ponds over the cell's footprint (the engine sets that area) instead of overflowing and being lost
+            # from the 1D balance, which needs ALLOW_PONDING (out["ponding"])
+            c = free_cell(n["x"], n["y"], 2, OPEN + ("chan",))
+            z = zc(*c) if c else zg(n["x"], n["y"])
+            z = z if z is not None else n["invert"] + 1.0
+            depth = max(0.1, z - n["invert"])
+            out["junctions"].append(f"{node} {n['invert']:.3f} {depth:.3f} {min(y0n[k], depth):.3f} 0 {H * H:.1f}")
+            out["ponding"] = True
+            if c:
+                taken.add(c); tg = tag_of(node)
+                for t in tris(*c): tags(t)[5] = tg
+                out["nodemap"].append(f"{tg} {node} 0.65 {min(CHAN_LINK_MAX, max(0.5, wn[k] * H / 2)):.3f}")
+            else:
+                count["unlinked"] += 1
+            count["channel"] += 1; side[node] = dict(kind="channel", z=z); continue
         kind = n.get("cover_type") or cover_def
         c = None if kind == "sealed" else free_cell(n["x"], n["y"], 2, OPEN)
         if c is None and kind != "sealed":
@@ -1326,6 +1688,12 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
                 out["pumps"].append(" ".join([lid, us, ds, cname(l["curve"]) if l.get("curve") else "*"] + pr[1:]))
             continue
         L = max(2.0, l.get("length") or l.get("geom_len") or 2.0)
+        if l.get("channel"):
+            tn, _, _, nn = clipped[l.get("parent", k)]
+            out["conduits"].append(f"{lid} {us} {ds} {L:.2f} {nn[2]:.4f} {l['us_inv']:.3f} {l['ds_inv']:.3f} "
+                                   f"{qlink.get(k, 0.0):.4f} 0")
+            out["xsections"].append(f"{lid} IRREGULAR {tn} 0 0 0 1")
+            continue
         out["conduits"].append(f"{lid} {sid[l['us']]} {sid[l['ds']]} {L:.2f} {l['n']:.4f} {l['us_inv']:.3f} {l['ds_inv']:.3f} 0 0")
         if l.get("xs_raw") and not l.get("size_filled"):            # SWMM: as given, with a custom shape curve renamed
             xr = list(l["xs_raw"])
@@ -1339,7 +1707,11 @@ def model_lines(A, q, lines, cache, net, sidecar=None):
     for kk, p in tri.items(): lines[t0 + kk] = " ".join(p)
     out["stats"] = count
     if sidecar:
-        Path(sidecar).write_text(json.dumps(dict(nodes=side, outfalls=[sid[k] for k, n in net["nodes"].items() if n["kind"] == "outfall"])))
+        piped = {e for l in net["links"].values() if not l.get("channel") for e in (l["us"], l["ds"])}
+        Path(sidecar).write_text(json.dumps(dict(nodes=side, outfalls=[sid[k] for k, n in net["nodes"].items()
+                                                                       if n["kind"] == "outfall" and k in piped],
+                                                 channel_outfalls=[sid[k] for k, n in net["nodes"].items()
+                                                                   if n["kind"] == "outfall" and k not in piped])))
     return out
 
 
@@ -1378,7 +1750,7 @@ def stats(rpt, sidecar=None):
     spill = {k: outv.get(u, 0) for u, k in cov.items()}
     for k, v in nodes.items():
         if v["kind"] == "grated": spill[k] = max(-lat.get(k, 0), 0)
-    sur = [k for k, v in nodes.items() if hgl.get(k, -1e9) >= v["z"] - 0.01]
+    sur = [k for k, v in nodes.items() if v["kind"] != "channel" and hgl.get(k, -1e9) >= v["z"] - 0.01]
     return dict(v_sewer_in=round(max(v_in, 0)), v_sewer_spill=round(sum(spill.values())),
                 # an outfall on the river also passes river water that entered it from the surface: not network water
                 v_sewer_out=round(sum(max(outv.get(o, 0) - lat.get(o, 0), 0) for o in outs)), n_surcharged=len(sur),

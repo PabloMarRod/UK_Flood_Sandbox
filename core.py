@@ -447,7 +447,19 @@ def write_inp(A, q, path, h5name, est=None):
     st1d = _structures(A, q, lines, cache)
     import ifcbuilding                                               # which IFC buildings are in this run's mesh
     Path(path).with_name("ifc_buildings.json").write_text(json.dumps([b["id"] for b in ifcbuilding.load_all(A)]))
-    sw = sewer.model_lines(A, q, lines, cache, sewer.load(A), Path(path).with_name("sewer_nodes.json")) if q.get("sewer") else None
+    known = {f["id"]: f for f in meta.get("inflows", [])}
+    rheads = ([dict(id="inflow", x=meta["ent"][0], y=meta["ent"][1], q0=float(qq[0]) if len(qq) else 0.0)]
+              if F.get("river_inflow") else []) + \
+             [dict(id=r["id"], x=known[r["id"]]["x"], y=known[r["id"]]["y"], q0=float(river_series(q, r)[1][0]))
+              for r in q.get("rivers", [])]
+    sw = sewer.model_lines(A, q, lines, cache, sewer.load(A), Path(path).with_name("sewer_nodes.json"),
+                           heads=rheads) if q.get("sewer") else None
+    captured = sw["captured"] if sw else {}             # river inflows taken by an imported open channel
+    if captured:                                         # their cells go back to plain channel
+        t0c = lines.index("[2D_TRIANGLES]") + 1
+        for k_ in range(t0c, len(lines)):
+            p_ = lines[k_].split()
+            if len(p_) > 5 and p_[5] in captured: p_[5] = "chan"; lines[k_] = " ".join(p_)
     if sw:
         for k_ in ("junctions", "outfalls", "storage", "orifices", "pumps", "curves", "xsections", "coords", "nodemap"):
             st1d[k_] += sw[k_]
@@ -456,7 +468,7 @@ def write_inp(A, q, path, h5name, est=None):
         st1d[k_] += bl[k_]
     weirs_all = (sw["weirs"] if sw else []) + bl["weirs"]
     outlets_all = (sw["outlets"] if sw else []) + bl["outlets"]
-    nodemap = ["[2D_TRIANGLE_NODE_MAP]"] + (["inflow OIN 0.65 4.0"] if F.get("river_inflow") else [])
+    nodemap = ["[2D_TRIANGLE_NODE_MAP]"] + (["inflow OIN 0.65 4.0"] if F.get("river_inflow") and "inflow" not in captured else [])
     nodes, coords, inflows, ts = [], [], [], []
     if q["burst"]:
         tsq = np.load(cache / "mesh.npz")["tsq"]
@@ -474,7 +486,10 @@ def write_inp(A, q, path, h5name, est=None):
         coords.append(f"OBURST {X0 + (i + .5) * H:.1f} {Y1 - (j + .5) * H:.1f}")
         inflows.append('OBURST FLOW QBURST "" 1.0 1.0')
         ts += [f"QBURST {day(int(t))} {hhmm(int(t) % 1440)} {v:.3f}" for t, v in zip(bt, bq)]
-    if F.get("river_inflow"):
+    if F.get("river_inflow") and "inflow" in captured:   # into the imported channel instead of onto the surface
+        inflows.insert(0, f'{captured["inflow"]} FLOW QIN "" 1.0 1.0')
+        ts = [f"QIN {day(int(m))} {hhmm(int(m) % 1440)} {v:.3f}" for m, v in zip(tq, qq)] + ts
+    elif F.get("river_inflow"):
         ex, ey = meta["ent"]
         nodes.insert(0, f"OIN {meta['ent_z']:.2f} FREE"); coords.insert(0, f"OIN {ex:.1f} {ey - 3:.1f}")
         inflows.insert(0, 'OIN FLOW QIN "" 1.0 1.0')
@@ -502,13 +517,15 @@ def write_inp(A, q, path, h5name, est=None):
     if roof_ts:
         ts += [f"ROOFRAIN {day(k * STEP_MIN)} {hhmm(k * STEP_MIN % 1440)} {r:.3f}" for k, r in enumerate(rain)]
         ts.append(f"ROOFRAIN {day(len(rain) * STEP_MIN)} {hhmm(len(rain) * STEP_MIN % 1440)} 0")
-    known = {f["id"]: f for f in meta.get("inflows", [])}
     for n_, r in enumerate(q.get("rivers", []), 1):
         f = known[r["id"]]; node = f"OR{n_}"; series = f"QR{n_}"
-        nodes.append(f"{node} {f['z']:.2f} FREE")
-        coords.append(f"{node} {f['x']:.1f} {f['y']:.1f}")
-        inflows.append(f'{node} FLOW {series} "" 1.0 1.0')
-        nodemap.append(f"{r['id']} {node} 0.65 4.0")
+        if r["id"] in captured:
+            inflows.append(f'{captured[r["id"]]} FLOW {series} "" 1.0 1.0')
+        else:
+            nodes.append(f"{node} {f['z']:.2f} FREE")
+            coords.append(f"{node} {f['x']:.1f} {f['y']:.1f}")
+            inflows.append(f'{node} FLOW {series} "" 1.0 1.0')
+            nodemap.append(f"{r['id']} {node} 0.65 4.0")
         rt, rq = river_series(q, r)
         ts += [f"{series} {day(int(m))} {hhmm(int(m) % 1440)} {v:.3f}" for m, v in zip(rt, rq)]
     tyne = meta.get("estuary")
@@ -528,11 +545,12 @@ def write_inp(A, q, path, h5name, est=None):
     end = int(round(q["sim"] * 60))
     rep = 5 if end <= 240 else 10
     o = [";; UNITS: SI (m)", ";; SOURCE_CRS: EPSG:27700", "[TITLE]", f"UK Flood Sandbox: {A['name']}", "",
-         "[OPTIONS]", "FLOW_UNITS CMS", "INFILTRATION HORTON", "FLOW_ROUTING DYNWAVE", "LINK_OFFSETS ELEVATION",
+         "[OPTIONS]", "FLOW_UNITS CMS", "INFILTRATION HORTON", "FLOW_ROUTING DYNWAVE", "LINK_OFFSETS ELEVATION"] + \
+        (["ALLOW_PONDING YES"] if sw and sw.get("ponding") else []) + [      # open-channel nodes pond over their cell
          "START_DATE 01/01/2030", "START_TIME 00:00:00", "REPORT_START_DATE 01/01/2030", "REPORT_START_TIME 00:00:00",
          f"END_DATE {day(end)}", f"END_TIME {hhmm(end % 1440)}:00", f"REPORT_STEP 00:{rep:02d}:00",
          "WET_STEP 00:01:00", "DRY_STEP 00:05:00", "ROUTING_STEP 00:00:05", "THREADS 0", "",
-         # SCF is not applied to 2D rain in openswmm 6.0.0a4, so intensities are written at full value
+         # the gauge's SCF (1.0) is SWMM's snow catch factor and scales snowfall only; climate uplift is in the series
          "[RAINGAGES]", f"RG1 INTENSITY 0:{STEP_MIN:02d} 1.0 TIMESERIES RAIN", "", "[TIMESERIES]"]
     for k, r in enumerate(rain):
         o.append(f"RAIN {day(k * STEP_MIN)} {hhmm(k * STEP_MIN % 1440)} {r:.3f}")
@@ -550,6 +568,7 @@ def write_inp(A, q, path, h5name, est=None):
           "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
          (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + \
          (["[WEIRS]"] + weirs_all if weirs_all else []) + (["[OUTLETS]"] + outlets_all if outlets_all else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
+    if sw and sw["transects"]: o += ["[TRANSECTS]"] + sw["transects"]
     if st1d["curves"]: o += ["[CURVES]"] + st1d["curves"]
     if st1d["controls"]: o += ["[CONTROLS]"] + st1d["controls"]
     nodemap += st1d["nodemap"]; coords += st1d["coords"]
@@ -564,6 +583,9 @@ def write_inp(A, q, path, h5name, est=None):
              [f"{t} HORTON {SUDS[t][0][0] * sc_:.1f} {SUDS[t][0][1] * sc_:.1f} {SUDS[t][0][2]} 7 0" for t in sorted(suds_used)] + [""]
     Path(path).write_text("\n".join(o) + "\n" + "\n".join(lines) + "\n".join(nodemap) + "\n\n" + "\n".join(bcs) + "\n")
     end_m = q["sim"] * 60
+    vol_ = lambda t_, v_: float(np.sum((v_[1:] + v_[:-1]) / 2 * np.diff(t_) * 60)) if len(t_) > 1 else 0.0
+    v_river_1d = (vol_(tq, qq) if F.get("river_inflow") and "inflow" in captured else 0.0) + \
+        sum(vol_(*river_series(q, r)) for r in q.get("rivers", []) if r["id"] in captured)
     if not F.get("river_inflow"):
         qq = np.zeros_like(qq)
     for r in q.get("rivers", []):
@@ -577,7 +599,7 @@ def write_inp(A, q, path, h5name, est=None):
         _gr = _green_roof_runoff(rain, q); ga_tot = sum(_gs.values())
         v_roof -= float((np.sum(rain) - np.sum(_gr)) * STEP_MIN / 60 / 1000 * ga_tot)
     f = dict(rain=rain.round(2).tolist(), rain_step=STEP_MIN, q_t=tq.tolist(), q=qq.round(3).tolist(),
-             burst_t=bt, burst_q=bq, report_step=rep, v_river_in=v_river, v_burst_in=v_burst, v_roof_in=v_roof,
+             burst_t=bt, burst_q=bq, report_step=rep, v_river_in=v_river, v_river_1d=v_river_1d, v_burst_in=v_burst, v_roof_in=v_roof,
              roof_area_m2=round(roof_area))
     if tyne:
         nd_up, nd_dn = tyne["nodes"][0], tyne["nodes"][-1]
@@ -1074,7 +1096,8 @@ def postprocess(A, h5path, q, forcing, runtime_s):
     kpk = int(np.argmax(qout))
     culv_depth = float(max(mdt[c] for c, e in meta["bc"])) if F.get("culvert") else None
     rain_mm = q["depth"] * (1 + q["uplift"] / 100)
-    tot_in = forcing["v_river_in"] + forcing["v_burst_in"] + forcing.get("v_roof_in", 0)
+    v_r1d = forcing.get("v_river_1d", 0.0)                  # river water fed into an imported open channel
+    tot_in = forcing["v_river_in"] - v_r1d + forcing["v_burst_in"] + forcing.get("v_roof_in", 0)
     share = mb["outfall_in"] / tot_in if tot_in > 0 else 0
     spd = np.where(MDl > 0.05, MVl, np.nan)
     if F.get("culvert"): spd = spd[:NY - 3]          # skip the outlet drawdown rows
@@ -1092,7 +1115,7 @@ def postprocess(A, h5path, q, forcing, runtime_s):
         measures=len(q.get("measures") or []),
         speed_artefact_cells=int(np.nansum(spd > 10)),   # unphysical speeds at steep drops (engine instability), excluded
         peak_out=round(float(qout.max()), 2), peak_out_min=int(minutes[kpk]),
-        v_rain=round(mb["rainfall_in"]), v_river=round(forcing["v_river_in"] * share), v_burst=round(forcing["v_burst_in"] * share),
+        v_rain=round(mb["rainfall_in"]), v_river=round((forcing["v_river_in"] - v_r1d) * share + v_r1d), v_burst=round(forcing["v_burst_in"] * share),
         v_roof=round(forcing.get("v_roof_in", 0) * share), roof_area_ha=round(forcing.get("roof_area_m2", 0) / 1e4, 2),
         v_out=round(mb["boundary_out"]), v_infil=round(mb["infil_out"]), v_stored=round(mb["final_storage"]),
         v_est_in=round(mb["boundary_in"]), v_init=round(mb["init_storage"]),
