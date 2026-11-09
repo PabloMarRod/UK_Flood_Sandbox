@@ -466,9 +466,9 @@ names) and can be changed. Levels must be in metres above Ordnance Datum.
 
 Every file is checked before anything is imported. Each issue is one of:
 
-- **error**: the import stops and the data must be corrected at source. Examples: a SWMM file in US units;
-  open channels given as IRREGULAR or STREET sections (the 2D surface already carries open channels, so importing
-  them would carry the same water twice); dummy links; shape names SWMM doesn't have; storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
+- **error**: the import stops and the data must be corrected at source. Examples:
+  STREET sections (the 2D surface already carries streets, so importing them would carry the same water twice);
+  open channels whose transect is missing or can't be read; open channels in a tidal reach; dummy links; shape names SWMM doesn't have; storage units with a shape other than TABULAR or FUNCTIONAL; curves referenced but missing;
   weirs or orifices without a cross-section, or whose level can't be worked out; GIS structures missing a value
   the model needs (crest level or length, flow-control level or size, pump rate or switch levels, tank floor level,
   depth or area); pumps switching off at or above their switch-on level; weir crests more than 0.5 m above the
@@ -481,13 +481,16 @@ Every file is checked before anything is imported. Each issue is one of:
   sizes from millimetres; join pipe ends to manholes within 5 m, or add a junction further away; fill missing sizes
   from the next pipe (225 mm if none); cover levels from LiDAR; inverts from connected pipes, depth, neighbours or
   1.5 m below cover; pipe inverts from their manholes; lower manholes above their pipes; Manning's n of 0.013 where
-  missing or not a Manning value; rename repeated pipe IDs; drop manholes with no pipe; keep only the part on the
+  missing or not a Manning value; carry open channels (IRREGULAR sections) in 1D below the LiDAR surface (see
+  below); rename repeated pipe IDs; drop manholes with no pipe; keep only the part on the
   area (pipes leaving it end at a free outfall; pipes entering it are dropped); join several pipes into an outfall at
   a new junction (SWMM allows one); treat outfalls with pipes leaving them as manholes; give each part without an
   outfall one at its lowest end manhole; cover types not recognised use the scenario default; chamber areas outside
   0.2 to 30 m2 use the default.
-- **warn**: imported as it is and noted (weirs, orifices, outlets, pumps and storage units imported from a SWMM
-  file; flow dividers imported as junctions; flap valves inside the network (not modelled); tidal or time-series
+- **warn**: imported as it is and noted (SWMM files in US units (CFS, GPM, MGD), converted to metres and m3/s,
+  curves and weir, outlet and divider coefficients included; SWMM files in LPS or MLD, whose flows, curves and
+  coefficients are converted to m3/s, the units the model runs in; weirs, orifices, outlets, pumps and storage units
+  imported from a SWMM file; flow dividers imported as junctions; flap valves inside the network (not modelled); tidal or time-series
   outfalls treated as free; SWMM junctions with a surcharge depth read as sealed, chamber sizes read
   as millimetres, covers more than 0.5 m from LiDAR, pipes falling uphill, pipes under 2 m,
   stated and drawn lengths differing by more than 20%, manholes deeper than 10 m).
@@ -517,6 +520,48 @@ start empty: foul and dry-weather flow, subcatchments and roof connections are n
 Cross-sections from a SWMM file are written back as given, with all their dimensions and barrels, so any of SWMM's
 standard shapes imports, as do CUSTOM closed shapes with their SHAPE curve (carried over and renamed; a missing
 curve stops the import).
+
+**Open channels.** IRREGULAR conduits (streams and ditches described by HEC-2 style transects) import once the user
+accepts the repair. The LiDAR surface already carries what it can see of a channel; what it can't see is the part
+below the water surface on the survey day, and channels narrower than a cell. So each channel carries in 1D only the
+part of its transect below the 2D surface: the transect is cut at the lowest ground level, above its bed, found
+along its reach (sampled every half cell along the conduit and its `[VERTICES]`), and the 2D surface carries
+everything above, so no water is counted twice. A reach with less than 10 cm hidden anywhere along it adds nothing
+in 1D (a few centimetres of channel would only surcharge), so it is left to the surface, with any node no longer
+joined to anything; the check lists such reaches as a warning. Reaches are split into pieces about two cells long,
+following their bends, so the channel meets the surface along its length. Each channel node is a junction whose top
+is the ground of its cell, linked both ways to that cell (opening up to 4 m2, half the channel's top width times the
+cell size; an assumption). Water above a node's top ponds over the cell's footprint (`ALLOW_PONDING`, used only when
+there are open channels; the engine sets the area) instead of overflowing, which would lose it from the 1D balance.
+The two flows run side by side with their own roughness: the standard divided-channel approximation, without the
+exchange of momentum between channel and floodplain. Water crosses between them only at nodes. Tidal reaches are
+refused, as the estuary model sets the level there; STREET sections are refused, as the surface carries streets.
+
+A river inflow within two cells of a channel's upstream end enters that channel instead of the surface (for the
+preset, the Ouseburn inflow node is then left out). Its flow at the start of the run (the base flow), up to what the
+cut channel carries when full, is set as the starting flow of the channel downstream, following the larger branch at
+a split, with node depths at Manning normal depth for that flow. Channels with no inflow start empty: a ditch that
+is usually dry is right, a stream that normally runs starts too low. Base flow beyond the cut channel's capacity
+spills to the surface from the first steps. Below a reach left to the surface the channel starts empty and fills
+from the surface. The river volume fed to channels is reported with the rest of the river inflow; channel nodes and
+their outfalls are kept out of the sewer results.
+
+Checks (Jesmond Vale, a synthetic 2 m wide, 1.5 m deep trapezoidal channel along 300 m of the Ouseburn, bed 0.6 m
+below the lowest LiDAR ground of each reach, 0.5 m3/s base flow, storms over 30 minutes): flow routing continuity
+0.08% (40 mm, 30 minutes simulated), -0.13% (10 mm, 30 minutes), -0.31% (40 mm, one hour) and -0.31% (80 mm, one
+hour); 2D continuity within 0.02%. With 40 mm over an hour, the area wet above 10 cm fell from 6.17 to 5.98 ha, and
+above 30 cm from 3.03 to 2.90 ha, against the same storm without the channel. Without ponding at channel nodes, 1D
+continuity was 1 to 2%: water rising above a node's top overflowed and was lost. The engine notes in the report that
+each channel node's ponded area is replaced by its cell's footprint, and a channel ending at an outfall inside the
+area can show that the outfall's withdrawal from the surface was capped by the water available; neither affects the
+balance. Further checks: with no river inflow (channel starting empty), -0.38%; with a pipe discharging into the
+channel, -0.31%; 120 mm, 0.20%; a 5 m3/s base flow, above the channel's capacity, 0.06%; a drawn-area river inflow
+(a 0.5 to 3 m3/s wave) entering the channel, -0.05%; a channel whose bed is above the LiDAR ground was left wholly
+to the surface and gave the same result as no channel; channels with 20 and 30 cm hidden were kept in part, at
+-0.13% and -0.22%. A SWMM file in CFS and one in LPS gave the same pipe, weir, orifice and pump flows as the same
+networks in CMS. Grated manholes, which also have their top at the ground, were checked for the loss found at
+channel nodes: with 1 m2 grates under 120 mm, 735 m3 rose above their tops and flow routing continuity stayed at
+0.11%, so they need no change.
 
 SWMM files may also hold weirs (CSO overflows, for example), orifices, outlets, pumps and storage units. They keep
 their settings from the source model: crest heights are converted to elevations, pump and outlet curves and
@@ -556,7 +601,9 @@ under ponded water show local node continuity errors in the report as water move
 system totals close.
 
 `tests/test_sewer.py` covers each blocking error, the repairs (including that a declined repair blocks saving),
-cover types and chamber sizes on import, how each cover type is linked to the surface, and a coupled engine run.
+cover types and chamber sizes on import, how each cover type is linked to the surface, unit conversion of SWMM
+files, open channels (cutting a transect, normal depth, the river inflow entering the channel, its capped base flow,
+reaches the LiDAR already sees, tidal reaches) and coupled engine runs, one with an open channel.
 
 ## IFC buildings
 
@@ -698,10 +745,10 @@ engine run.
   effective opening width in proportion.
 - Ground condition sets Horton infiltration on green and garden areas (dry, normal, saturated) or switches it off.
   All infiltration parameters are assumed.
-- Not included unless imported: sewers. Not included: runoff from outside the outline, channel beds of streams below the surveyed water surface.
+- Not included unless imported: sewers, and channel beds of streams below the surveyed water surface (imported as
+  open channels). Not included: runoff from outside the outline.
   Results are indicative and not validated.
-- Engine quirks found in openswmm 6.0.0a4: the rain gauge scale factor is not applied to 2D rain
-  (rain is written at full intensity), and a model needs at least one 1D element, so a detached
+- Engine quirk found in openswmm 6.0.0a4: a model needs at least one 1D element, so a detached
   dummy pipe is included.
 - The engine prints a "CPU marcher" message on start; a CUDA GPU can be used with
   `OPENSWMM_2D_BACKEND=cuda` if your build supports it.
