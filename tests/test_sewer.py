@@ -146,6 +146,13 @@ def test_swmm_coordinates_in_wgs84_are_offered_conversion(A, tmp_path):
     assert run_check(A, tmp_path / "n.inp", tmp_path, all_fixes=True)["status"] == "ok"
 
 
+def link_flows(rpt):
+    """Maximum |flow| per link from the report's Link Flow Summary (and only that table: later tables list the same
+    links with other numbers)."""
+    table = rpt.split("Link Flow Summary")[1].split("Flow Classification Summary")[0]
+    return {p[0]: float(p[2]) for p in (l.split() for l in table.split("\n")) if len(p) > 2 and p[0].startswith("S_")}
+
+
 @pytest.mark.engine
 def test_coupled_run(A, tmp_path, monkeypatch):
     area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*"))
@@ -293,9 +300,8 @@ def test_structures_run(A, tmp_path, monkeypatch):
     assert "ERROR" not in rpt.split("Element Count")[0]
     errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
     assert errs and max(abs(e) for e in errs) < 0.5
-    flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
-             if l.strip().startswith(("S_CSO1", "S_PMP1", "S_OR1"))}
-    assert set(flows) == {"S_CSO1", "S_PMP1", "S_OR1"}
+    flows = link_flows(rpt)
+    assert all(flows.get(k, 0) > 0 for k in ("S_CSO1", "S_PMP1", "S_OR1")), flows   # each structure passed water
 
 
 def test_swmm_dividers_become_junctions(A, tmp_path):
@@ -402,9 +408,8 @@ def test_gis_structures_run(A, tmp_path, monkeypatch):
     rpt = (run / "model.rpt").read_text()
     errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
     assert errs and max(abs(e) for e in errs) < 0.5
-    flows = {l.split()[0]: float(l.split()[2]) for l in rpt.split("Link Flow Summary")[1].split("\n")
-             if l.strip().startswith(("S_CSO1", "S_PMP1", "S_HB1"))}
-    assert set(flows) == {"S_CSO1", "S_PMP1", "S_HB1"} and flows["S_HB1"] <= 0.035
+    flows = link_flows(rpt)
+    assert {"S_CSO1", "S_PMP1", "S_HB1"} <= set(flows) and flows["S_HB1"] <= 0.035, flows
 
 
 def custom_inp(path, shape_line, extra=""):
@@ -441,19 +446,217 @@ def test_custom_shape_without_its_curve_blocks(A, tmp_path):
     assert r["status"] == "blocked" and "E_CURVE" in codes(r, "error")
 
 
-def test_open_channels_and_us_units_block(A, tmp_path):
+def test_streets_and_missing_transects_block(A, tmp_path):
+    r = run_check(A, custom_inp(tmp_path / "s.inp", "STREET ST1"), tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_STREET" in codes(r, "error")
     r = run_check(A, custom_inp(tmp_path / "c.inp", "IRREGULAR DITCH1"), tmp_path, all_fixes=True)
-    assert r["status"] == "blocked" and "E_OPEN_CHANNEL" in codes(r, "error")
-    f = write_inp(tmp_path / "u.inp", NET["nodes"], NET["pipes"])
-    f.write_text(f.read_text().replace("FLOW_UNITS CMS", "FLOW_UNITS CFS"))
+    assert r["status"] == "blocked" and "E_TRANSECT" in codes(r, "error")
+
+
+def channel_inp(A, path, n_cells=60, every=12, hidden=0.6):
+    """An open channel along the first n cells of the preset's Ouseburn, with bends, as a SWMM file: a 2 m wide
+    trapezoid 1.5 m deep whose bed lies `hidden` m below the lowest LiDAR ground of each reach."""
+    import networkx as nx
+    G = sewer.Ground(A)
+    meta = json.loads((Path(A["dir"]) / "cache" / "mesh_meta.json").read_text())
+    S = set(zip(*[v.tolist() for v in np.nonzero(np.load(Path(A["dir"]) / "cache" / "mesh.npz")["is_chan"])]))
+    g = nx.Graph()
+    for (j, i) in S:
+        for dj, di in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            if (j + dj, i + di) in S: g.add_edge((j, i), (j + dj, i + di), weight=float(np.hypot(dj, di)))
+    def near(pt):
+        c0 = G.cell(pt[0], pt[1] - 1) or G.cell(pt[0], pt[1] + 1)
+        return min(S, key=lambda c: (c[0] - c0[0]) ** 2 + (c[1] - c0[1]) ** 2)
+    p = nx.shortest_path(g, near(meta["ent"]), near(meta["ext"]), weight="weight")[:n_cells + 1]
+    xy = [(A["X0"] + (i + .5) * A["H"], A["Y1"] - (j + .5) * A["H"]) for j, i in p]
+    idx = list(range(0, len(p), every)); idx[-1] = len(p) - 1
+    inv, low = [], 1e9
+    for k in idx:
+        low = min(low, min(float(G.z[c]) for c in p[max(0, k - every):k + 1]) - hidden); inv.append(low)
+    for k in range(1, len(inv)): inv[k] = min(inv[k], inv[k - 1] - 0.01)
+    nm = [f"CH{k}" for k in range(len(idx))]
+    o = ["[OPTIONS]", "FLOW_UNITS CMS", "LINK_OFFSETS ELEVATION", "[JUNCTIONS]"]
+    o += [f"{nm[k]} {inv[k]:.3f} 2.0 0 0 0" for k in range(len(idx) - 1)]
+    o += ["[OUTFALLS]", f"{nm[-1]} {inv[-1]:.3f} FREE NO", "[CONDUITS]"]
+    for k in range(len(idx) - 1):
+        L = sum(math.dist(xy[a], xy[a + 1]) for a in range(idx[k], idx[k + 1]))
+        o.append(f"R{k} {nm[k]} {nm[k + 1]} {L:.1f} 0.035 {inv[k]:.3f} {inv[k + 1]:.3f} 0 0")
+    o += ["[XSECTIONS]"] + [f"R{k} IRREGULAR BURN 0 0 0 1" for k in range(len(idx) - 1)]
+    o += ["[TRANSECTS]", "NC 0.06 0.06 0.035", "X1 BURN 4 0 6 0 0 0 0 0", "GR 1.5 0 0 2 0 4 1.5 6"]
+    o += ["[VERTICES]"] + [f"R{k} {xy[a][0]:.2f} {xy[a][1]:.2f}" for k in range(len(idx) - 1) for a in range(idx[k] + 1, idx[k + 1])]
+    o += ["[COORDINATES]"] + [f"{nm[k]} {xy[i][0]:.2f} {xy[i][1]:.2f}" for k, i in enumerate(idx)]
+    Path(path).write_text("\n".join(o) + "\n")
+    return path
+
+
+def test_clip_transect_and_normal_depth():
+    trap = [(0, 1.5), (2, 0), (4, 0), (6, 1.5)]
+    pts, w = sewer.clip_transect(trap, 0.75)
+    assert [v for pt in pts for v in pt] == pytest.approx([1, 0.75, 2, 0, 4, 0, 5, 0.75]) and w == pytest.approx(4)
+    assert sewer.clip_transect(trap, 3.0)[0] == trap                    # shallower than the cut: kept whole
+    a, per, top = sewer.section(trap, 0.75)
+    assert a == pytest.approx(0.75 * (2 + 4) / 2) and top == pytest.approx(4)
+    rect = [(0, 2), (0, 0), (3, 0), (3, 2)]                              # 3 m wide: Manning by hand at 0.5 m deep
+    q = 1.5 ** (5 / 3) / 4 ** (2 / 3) * math.sqrt(0.001) / 0.03
+    assert sewer.normal_depth(rect, 0.03, 0.001, q) == pytest.approx(0.5, abs=1e-4)
+
+
+def test_open_channel_needs_consent_and_couples(A, tmp_path):
+    f = channel_inp(A, tmp_path / "ch.inp")
+    r = run_check(A, f, tmp_path)
+    assert r["status"] == "needs_fixes" and "F_CHANNEL" in codes(r, "fix")
     r = run_check(A, f, tmp_path, all_fixes=True)
-    assert r["status"] == "blocked" and "E_US_UNITS" in codes(r, "error")
+    assert r["status"] == "ok", codes(r)
+    assert not {"E_ABOVE", "F_ROUGH", "W_COVER"} & codes(r)
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, r, "ch.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True, inflow="base", base_q=0.5))
+    forcing = core.write_inp(A2, q, tmp_path / "model.inp", "model.h5")
+    t = (tmp_path / "model.inp").read_text()
+    assert "[TRANSECTS]" in t and "S_CH0 FLOW QIN" in t                  # the river enters the channel ...
+    assert "OIN" not in t and not any(l.split()[5:6] == ["inflow"] for l in t.split("\n"))   # ... not the surface
+    assert forcing["v_river_1d"] == pytest.approx(forcing["v_river_in"])
+    conduits = [l.split() for l in t.split("\n") if l.startswith("S_R0_s") and " IRREGULAR " not in l]
+    assert len(conduits) > 3 and all(float(c[7]) == pytest.approx(0.5) for c in conduits)   # base flow at the start
+    gr = [l for l in t.split("\n") if l.startswith("GR ")]
+    assert gr and all(max(map(float, l.split()[1::2])) < 1.5 for l in gr)                   # cut at the surface
+
+
+def test_channel_the_lidar_sees_is_left_to_the_surface(A, tmp_path):
+    f = channel_inp(A, tmp_path / "ch.inp", hidden=-0.3)                   # bed above the LiDAR ground
+    r = run_check(A, f, tmp_path, all_fixes=True)
+    assert r["status"] == "ok" and "W_CHANNEL_SEEN" in codes(r, "warn")
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, r, "ch.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True))
+    core.write_inp(A2, q, tmp_path / "model.inp", "model.h5")
+    t = (tmp_path / "model.inp").read_text()
+    assert " IRREGULAR " not in t and "\nOIN " in t                      # nothing in 1D; the river stays on the surface
+
+
+def test_channel_base_flow_is_capped_at_its_capacity(A, tmp_path):
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area))
+    sewer.save(A2, run_check(A2, channel_inp(A2, tmp_path / "ch.inp"), tmp_path, all_fixes=True), "ch.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True, inflow="base", base_q=5))
+    core.write_inp(A2, q, tmp_path / "model.inp", "model.h5")
+    q0 = [float(l.split()[7]) for l in (tmp_path / "model.inp").read_text().split("\n")
+          if l.startswith("S_R") and len(l.split()) == 9 and " IRREGULAR " not in l]
+    assert q0 and 0 < max(q0) < 5                                          # the rest starts on the surface
+
+
+def test_open_channel_in_tidal_reach_blocks(A, tmp_path, monkeypatch):
+    real = sewer.Ground.__init__
+    def tidal_init(self, A_):
+        real(self, A_); self.tag = {k: "tidal" for k in self.tag}
+    monkeypatch.setattr(sewer.Ground, "__init__", tidal_init)
+    r = run_check(A, channel_inp(A, tmp_path / "ch.inp"), tmp_path, all_fixes=True)
+    assert r["status"] == "blocked" and "E_CHANNEL_TIDAL" in codes(r, "error")
+
+
+@pytest.mark.engine
+def test_open_channel_run(A, tmp_path, monkeypatch):
+    f = channel_inp(A, tmp_path / "ch.inp")
+    area = tmp_path / "area"; shutil.copytree(A["dir"], area, ignore=shutil.ignore_patterns("sewer*", "data"))
+    A2 = dict(A, dir=str(area)); sewer.save(A2, run_check(A2, f, tmp_path, all_fixes=True), "ch.inp")
+    q, _ = core.validate(A2, dict(depth=40, duration=30, sim=0.5, sewer=True, inflow="base", base_q=0.5))
+    run = tmp_path / "run"; run.mkdir(); monkeypatch.chdir(run)
+    forcing = core.write_inp(A2, q, run / "model.inp", "model.h5")
+    import openswmm.engine as eng
+    eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), lambda frac: None)
+    rpt = (run / "model.rpt").read_text()
+    errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
+    assert errs and max(abs(e) for e in errs) < 0.5
+    flows = {k: v for k, v in link_flows(rpt).items() if k.startswith("S_R")}
+    assert flows and min(flows.values()) >= 0.45                           # the base flow runs the whole channel
+    s = core.postprocess(A2, str(run / "model.h5"), q, forcing, 1.0)["stats"]
+    assert abs(s["mb_error_pct"]) < 0.05 and s["v_river"] == pytest.approx(forcing["v_river_in"], rel=0.01)
+
+
+US_EXTRA = """[STORAGE]
+TANK1 {inv} 6.56168 0 FUNCTIONAL 10.7639 0 107.639 0 0
+[PUMPS]
+P1 TANK1 {ds} PC1 ON 3.28084 1.64042
+[WEIRS]
+W1 {us} {ds} TRANSVERSE {crest} 3.33 NO
+[XSECTIONS]
+W1 RECT_OPEN 1.64042 3.28084 0 0
+[CURVES]
+PC1 PUMP2 0 3.53147 3.28084 7.06293
+"""
+
+
+def test_us_units_are_converted(A, tmp_path):
+    si = run_check(A, write_inp(tmp_path / "s.inp", NET["nodes"], NET["pipes"]), tmp_path / "s", all_fixes=True)
+    ft = 1 / sewer.FT
+    nodes = [dict(n, invert=n["invert"] * ft, cover=n["cover"] * ft if n["cover"] is not None else None) for n in NET["nodes"]]
+    pipes = [dict(p, length=p["length"] * ft, us_inv=p["us_inv"] * ft, ds_inv=p["ds_inv"] * ft, size=p["size"] * ft)
+             for p in NET["pipes"]]
+    f = write_inp(tmp_path / "u.inp", nodes, pipes)
+    f.write_text(f.read_text().replace("FLOW_UNITS CMS", "FLOW_UNITS CFS"))
+    r = run_check(A, f, tmp_path / "u", all_fixes=True)
+    assert r["status"] == "ok" and "W_US_UNITS" in codes(r, "warn"), codes(r)
+    for k, n in si["network"]["nodes"].items():
+        assert r["network"]["nodes"][k]["invert"] == pytest.approx(n["invert"], abs=1e-6)
+    for k, l in si["network"]["links"].items():
+        u = r["network"]["links"][k]
+        assert u["g1"] == pytest.approx(l["g1"], abs=1e-6) and u["us_inv"] == pytest.approx(l["us_inv"], abs=1e-6)
+        assert (u.get("length") or 0) == pytest.approx(l.get("length") or 0, abs=1e-6)
+
+
+def test_us_units_convert_structures_and_curves(tmp_path):
+    p = NET["pipes"][0]
+    f = write_inp(tmp_path / "u.inp", NET["nodes"], NET["pipes"], US_EXTRA.format(
+        inv=10 / sewer.FT, us=p["us"], ds=p["ds"], crest=20 / sewer.FT))
+    f.write_text(f.read_text().replace("FLOW_UNITS CMS", "FLOW_UNITS CFS"))
+    net, iss = sewer.from_inp(f)
+    assert "W_US_UNITS" in {i["code"] for i in iss}
+    t = net["nodes"]["TANK1"]["storage"]                                    # Elev Ymax Y0 FUNCTIONAL A1 A2 A0 ...
+    assert float(t[0]) == pytest.approx(10) and float(t[1]) == pytest.approx(2.0, abs=1e-4)
+    assert float(t[4]) == pytest.approx(1.0, abs=1e-4) and float(t[6]) == pytest.approx(10.0, abs=1e-4)   # m2
+    pm = net["links"]["P1"]["params"]
+    assert float(pm[2]) == pytest.approx(1.0, abs=1e-4) and float(pm[3]) == pytest.approx(0.5, abs=1e-4)
+    curve = [float(v) for v in net["curves"]["PC1"][0][1:]]
+    assert curve == pytest.approx([0, 0.1, 1.0, 0.2], abs=1e-4)              # depth m, flow m3/s
+    w = net["links"]["W1"]
+    assert w["crest"] == pytest.approx(20) and float(w["params"][2]) == pytest.approx(3.33 * sewer.FT ** 0.5, abs=1e-4)
+    assert [float(v) for v in w["xs"][1:3]] == pytest.approx([0.5, 1.0], abs=1e-4)
 
 
 def test_other_swmm_shapes_keep_all_their_dimensions(A, tmp_path):
     r = run_check(A, custom_inp(tmp_path / "t.inp", "TRAPEZOIDAL 0.6 0.4 1.5 1.5 2"), tmp_path, all_fixes=True)
     assert r["status"] == "ok"
     assert r["network"]["links"][NET["pipes"][0]["id"]]["xs_raw"] == ["TRAPEZOIDAL", "0.6", "0.4", "1.5", "1.5", "2"]
+
+
+LPS_EXTRA = """[OUTLETS]
+O1 {us} {ds} {crest} FUNCTIONAL/HEAD 500 0.5 NO
+[PUMPS]
+P1 {us} {ds} PC1 ON 1.0 0.5
+[WEIRS]
+W1 {us} {ds} TRANSVERSE {crest} 1840 NO
+[XSECTIONS]
+W1 RECT_OPEN 0.5 1.0 0 0
+[CURVES]
+PC1 PUMP2 0 100 1.0 200
+"""
+
+
+def test_lps_flows_are_converted_to_cms(tmp_path):
+    p = NET["pipes"][0]
+    f = write_inp(tmp_path / "l.inp", NET["nodes"], NET["pipes"], LPS_EXTRA.format(us=p["us"], ds=p["ds"], crest=20))
+    f.write_text(f.read_text().replace("FLOW_UNITS CMS", "FLOW_UNITS LPS"))
+    net, iss = sewer.from_inp(f)
+    assert "W_FLOW_UNITS" in {i["code"] for i in iss}
+    assert float(net["links"]["W1"]["params"][2]) == pytest.approx(1.84)              # weir coefficient
+    assert float(net["links"]["O1"]["params"][2]) == pytest.approx(0.5)               # outlet C
+    assert [float(v) for v in net["curves"]["PC1"][0][1:]] == pytest.approx([0, 0.1, 1.0, 0.2])
+    assert net["links"]["W1"]["crest"] == pytest.approx(20)                            # lengths untouched
+    assert net["nodes"][p["us"]]["invert"] == pytest.approx(next(n["invert"] for n in NET["nodes"] if n["id"] == p["us"]))
+    f.write_text(f.read_text().replace("FLOW_UNITS LPS", "FLOW_UNITS CMS"))
+    net, iss = sewer.from_inp(f)
+    assert not {"W_FLOW_UNITS", "W_US_UNITS"} & {i["code"] for i in iss}
+    assert float(net["links"]["W1"]["params"][2]) == pytest.approx(1840)
 
 
 @pytest.mark.engine
@@ -471,5 +674,4 @@ def test_custom_shape_run(A, tmp_path, monkeypatch):
     errs = [float(l.split()[-1]) for l in rpt.split("\n") if "Continuity Error (%)" in l]
     assert errs and max(abs(e) for e in errs) < 0.5
     pid = "S_" + NET["pipes"][0]["id"]
-    row = [l for l in rpt.split("Link Flow Summary")[1].split("\n") if l.strip().startswith(pid + " ")]
-    assert row and float(row[0].split()[2]) > 0                               # water went through the custom pipe
+    assert link_flows(rpt).get(pid, 0) > 0                                   # water went through the custom pipe
