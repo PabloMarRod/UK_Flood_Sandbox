@@ -27,10 +27,12 @@ indicative damage.
   deepening, permeable surfaces, rain gardens, swales, tree planting, green roofs, storage tanks, pumps and
   timed flood gates, then compare against the same storm without them.
 - **Drainage networks**: import sewers or drains from a SWMM file (InfoWorks ICM, SewerGEMS, PCSWMM) or GIS
-  layers (GeoPackage, shapefiles, ArcGIS file geodatabase), including weirs, flow controls, pumps and storage.
+  layers (GeoPackage, shapefiles, ArcGIS file geodatabase), including weirs, flow controls, pumps and storage,
+  and open channels (streams and ditches described by transects). SWMM files in US units are converted to metres.
   Every file is checked first: problems that must be fixed at source stop the import, and any repair the app
   offers needs your consent. Manholes are coupled to the surface through gullies and covers (solid, grated or
-  sealed), and results show what the network took in, spilled and carried away.
+  sealed), open channels carry the part of the channel the LiDAR can't see, and results show what the network
+  took in, spilled and carried away.
 - **Your own buildings**: add a building from an IFC model, a point cloud (LAS, LAZ, E57, XYZ, PTS, CSV) or a
   mesh from a phone scan or photogrammetry (OBJ, PLY, GLB, glTF), or click a building on the map to replace it.
   Georeferenced files land in place; others are dragged and rotated on the map, and phone scans are levelled on
@@ -100,6 +102,9 @@ Details, assumptions, sources and test results: [docs/technical-notes.md](docs/t
   roofs drain to the ground beside each building. Without a network, small, frequent storms flood more than they
   would in reality. Imported networks start empty (no foul or dry-weather flow), and gully capacities, cover
   openings and chamber sizes are assumptions unless the data gives them.
+- Streams and ditches are only as deep as the LiDAR sees them: their beds below the water surface on the survey
+  day, and channels narrower than a cell, are missing unless imported as open channels. Imported channels exchange
+  water with the surface at nodes about two cells apart, and the size of that exchange is an assumption.
 - Water entering buildings rests on limited evidence: door leakage, window behaviour, and wall failure based on an analysis of modern English homes (see the technical notes for
   the sources). Airbricks and stairs are not modelled.
 - Phone scans have no real heights: they are levelled on the LiDAR, so their levels are only as accurate as it is.
