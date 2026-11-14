@@ -382,7 +382,12 @@ In the results window:
   results side by side with the run chosen under "Compare with" (including damage avoided and damage avoided per
   unit of cost when defences have costs), affected key sites, the defences used, and sources and limitations.
   Damage uses the "Multiply damage by" factor. Saved as `runs/<run>/report.pdf`.
-- "GIS data (zip)": `runs/<run>/gis_export.zip`, British National Grid (EPSG:27700), with a README:
+- "GIS data (zip)": `runs/<run>/gis_export.zip`, British National Grid (EPSG:27700) by default, with a README.
+  Another coordinate system can be typed as an EPSG code beside the button (common UK and Irish ones are
+  suggested); it must be a 2D map system whose area of use covers the area. The zip is then
+  `gis_export_epsg<code>.zip`: the GeoPackage layers are converted exactly, and each GeoTIFF cell takes the
+  largest value of the model cells it covers, so depths and hazard classes stay modelled values and peaks are
+  kept. `time_series.nc` stays in British National Grid. Contents:
   `max_depth_m.tif`, `max_speed_m_s.tif`, `hazard_class.tif` (0 none to 4 extreme) at the model's cell size, and
   `flood_results.gpkg` with layers area_outline, buildings (type, deepest water beside the building, estimated
   damage in EUR at 2010 prices, affected flag), roads_flooded (roads with water over 0.1 m: maximum depth, length
@@ -616,7 +621,11 @@ spaces with their use, storey and floor area.
 
 Placement: an IfcMapConversion to British National Grid places it directly (its Scale is applied relative to
 metres, since the geometry is read in metres; a model in millimetres that left Scale at 1 is read as if it
-converted and noted). A site latitude and longitude gives an approximate, unrotated position. Otherwise the
+converted and noted). One to another projected system (ETRS89 / UTM, Irish grids, Web Mercator, or a compound
+system such as EPSG:7405) is converted: the anchor point exactly, the axis direction and scale from the local
+change of grid, which is exact to well under a centimetre over a building. Heights are used as given, so they
+must be metres above Ordnance Datum Newlyn; the check notes the conversion. Latitude and longitude systems are
+not accepted in a map conversion. A site latitude and longitude gives an approximate, unrotated position. Otherwise the
 outline is dragged and rotated on the map, with the mapped buildings around it drawn as a guide.
 
 Checks, as for drainage networks: unreadable files, no walls or slabs with geometry, an implausibly large

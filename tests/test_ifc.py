@@ -152,3 +152,34 @@ def test_door_leakage_follows_the_measured_rates_and_windows_stay_sealed(A, G, t
     assert not any(l[0].startswith("IW") for l in o) and any("treated as watertight" in w for w in warn)
     o, _ = outlets(bld_windows="break", bld_window_break=0.5)
     assert sum(l[0].startswith("IW") for l in o) == 2                                # both windows can now break
+
+
+def _in_grid(crs, E, N, rot):
+    """The SITE anchor, x-axis direction and ground scale expressed in another projected grid."""
+    import math
+    from pyproj import Transformer
+    tf = Transformer.from_crs(27700, crs, always_xy=True)
+    e, n = tf.transform(E, N)
+    xe, xn = tf.transform(E + 10 * math.cos(math.radians(rot)), N + 10 * math.sin(math.radians(rot)))
+    return e, n, math.degrees(math.atan2(xn - n, xe - e)), math.hypot(xe - e, xn - n) / 10
+
+
+@pytest.mark.parametrize("crs,warned", [("EPSG:25830", True), ("EPSG:3857", True), ("EPSG:7405", False)])
+def test_model_in_another_grid_lands_in_place(A, G, tmp_path, crs, warned):
+    import ifcopenshell
+    ref = ib.check(make_house(tmp_path / "bng.ifc", **SITE), A, G)["building"]
+    e, n, rot, k = _in_grid(crs, SITE["E"], SITE["N"], SITE["rot"])
+    f = make_house(tmp_path / "other.ifc", **dict(SITE, E=e, N=n, rot=rot), crs=crs)
+    m = ifcopenshell.open(str(f)); m.by_type("IfcMapConversion")[0].Scale = k; m.write(str(f))
+    r = ib.check(f, A, G)
+    assert r["status"] == "ok", r["issues"]
+    b = r["building"]
+    assert ("W_CRS" in {i["code"] for i in r["issues"]}) == warned
+    assert abs(b["area"] - ref["area"]) < 0.5 and abs(b["rot"] - ref["rot"]) < 0.2
+    assert max(abs(p - q) for u, v in zip(b["footprint"], ref["footprint"]) for p, q in zip(u, v)) < 0.05
+
+
+def test_model_in_latitude_longitude_is_blocked(A, G, tmp_path):
+    f = make_house(tmp_path / "ll.ifc", **dict(SITE, E=-1.6, N=54.99), crs="EPSG:4326")
+    r = ib.check(f, A, G)
+    assert r["status"] == "blocked" and "E_CRS" in {i["code"] for i in r["issues"]}

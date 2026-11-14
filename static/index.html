@@ -159,6 +159,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
 .cellpick{display:flex;align-items:center;gap:8px;font-size:12.5px}
 .cellpick input[type=range]{width:120px}
 .cellpick output{min-width:3em;font-variant-numeric:tabular-nums}
+.epsgpick{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.epsgpick .num{width:100px;padding:6px 8px;font-size:14px}
+.gisgrp{display:flex;align-items:center;gap:8px}
 .dhint{font-size:13px;color:var(--muted);margin:10px 0 8px;line-height:1.45}
 .budget-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;margin-bottom:12px}
 .bdot{flex:none;width:10px;height:10px;border-radius:50%;background:#c4cfd1;margin-top:4px}
@@ -693,11 +696,25 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <p class="note" id="eaOut"></p>
     </div>
     <p class="note" id="resStatus" aria-live="polite"></p>
-    <div class="actions">
+    <div class="actions" style="flex-wrap:wrap">
       <button type="button" class="ghost" id="closeRes">Close</button>
       <button type="button" class="ghost" id="videoRes">Save video (MP4)</button>
       <button type="button" class="ghost" id="reportRes">Report (PDF)</button>
+      <span class="gisgrp">
+      <label class="epsgpick" for="gisEpsg" title="Coordinate system of the GIS data (EPSG code)">EPSG
+        <input class="num" id="gisEpsg" list="epsgList" value="27700" inputmode="numeric" autocomplete="off"></label>
+      <datalist id="epsgList">
+        <option value="27700">British National Grid</option>
+        <option value="29903">Irish Grid (TM75)</option>
+        <option value="2157">Irish Transverse Mercator</option>
+        <option value="25830">ETRS89 / UTM zone 30N</option>
+        <option value="32630">WGS 84 / UTM zone 30N</option>
+        <option value="4258">ETRS89 latitude/longitude</option>
+        <option value="4326">WGS 84 latitude/longitude</option>
+        <option value="3857">Web Mercator</option>
+      </datalist>
       <button type="button" class="ghost" id="gisRes">GIS data (zip)</button>
+      </span>
       <button type="button" class="primary" id="replay">Replay on the map</button>
     </div>
   </div>
@@ -1619,7 +1636,7 @@ async function exportRun(kind){
   const btn = $(kind === 'gis' ? 'gisRes' : 'reportRes'), label = btn.textContent;
   btn.disabled = true; btn.textContent = kind === 'gis' ? 'Preparing GIS data…' : 'Writing the report…';
   try {
-    const body = kind === 'gis' ? {} : {description: describe(R.params), factor: DMG_FACTOR, ref: CMP && CMP.run ? CMP.run : null,
+    const body = kind === 'gis' ? {epsg: $('gisEpsg').value.trim() || '27700'} : {description: describe(R.params), factor: DMG_FACTOR, ref: CMP && CMP.run ? CMP.run : null,
                                        snapshot: (window.V3 && V3.scene) ? V3.snapshot() : null};
     const r = await fetch(`/api/export/${R.run}/${kind}`, {method:'POST', body: JSON.stringify(body)}).then(x => x.json());
     if(!r.ok) throw new Error(r.error || 'failed');

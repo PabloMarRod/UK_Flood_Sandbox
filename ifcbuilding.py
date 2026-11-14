@@ -46,6 +46,32 @@ def georef(m, unit_scale=1.0):
     return None
 
 
+def georef_to_bng(g):
+    """An IfcMapConversion to another projected CRS, re-expressed as one to British National Grid.
+    Over a building's extent the change of grid is a rotation and a scale, so the anchor point is converted exactly
+    and the axis direction and scale from a 10-unit step along the model's x axis. Map units other than metres
+    (US feet, say) are absorbed into the scale. Returns (g, epsg); raises ValueError if it can't be converted."""
+    from pyproj import CRS, Transformer
+    try:
+        crs = CRS.from_user_input(str(g["crs"]).strip())
+    except Exception:
+        raise ValueError(f"{g['crs']} isn't a coordinate system this app recognises")
+    if crs.is_compound:
+        crs = crs.sub_crs_list[0]                     # the horizontal part, e.g. EPSG:27700 in EPSG:7405
+    if not crs.is_projected:
+        raise ValueError(f"{crs.name} isn't a projected (map grid) coordinate system")
+    epsg = crs.to_epsg()
+    if epsg == 27700:
+        return g, 27700
+    tf = Transformer.from_crs(crs, 27700, always_xy=True)
+    E, N = tf.transform(g["E"], g["N"])
+    d = 10.0
+    xe, xn = tf.transform(g["E"] + d * g["a"], g["N"] + d * g["b"])
+    k = math.hypot(xe - E, xn - N) / d
+    a, b = (xe - E) / (k * d), (xn - N) / (k * d)
+    return dict(g, E=E, N=N, a=a, b=b, scale=g["scale"] * k), epsg
+
+
 def read(path):
     """Everything in local engineering coordinates (metres): footprint polygon, elements, storeys, doors, spaces."""
     import ifcopenshell.geom, ifcopenshell.util.unit, ifcopenshell.util.element
@@ -153,9 +179,17 @@ def check(path, A, ground, placement=None, accepted=(), ffl_user=None):
                   "Drag and rotate the outline into position, then check again."))
         return dict(status="needs_placement", issues=iss, building=None, local=_local(r))
     if g.get("crs") and "27700" not in str(g["crs"]) and g["source"] == "IfcMapConversion":
-        add(issue("E_CRS", "error", "The model is georeferenced to another coordinate system", [g["crs"]],
-                  "Georeference it to British National Grid (EPSG:27700) in the authoring tool, or place it on the map instead."))
-        return dict(status="blocked", issues=iss, building=None)
+        src = g["crs"]
+        try:
+            g, epsg = georef_to_bng(g)
+        except ValueError as e:
+            add(issue("E_CRS", "error", "The model's coordinate system can't be converted", [src, str(e)],
+                      "Georeference it to British National Grid (EPSG:27700) in the authoring tool, or place it on the map instead."))
+            return dict(status="blocked", issues=iss, building=None)
+        if epsg != 27700:
+            add(issue("W_CRS", "warn", "Converted to British National Grid", [f"from {src}"],
+                      "Heights are used as they are in the file, so they must be metres above Ordnance Datum Newlyn. "
+                      "Check the position on the map."))
     if g.get("scale_slip"):
         add(issue("W_GEOREF_SCALE", "warn", "Georeferencing scale left at 1 in a model not in metres", [],
                   "Read as if the scale converted the model's units to metres. Check the position on the map."))

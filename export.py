@@ -1,12 +1,43 @@
 """Getting results out: a one-page PDF report and a GIS package (GeoTIFFs + GeoPackage) for a run.
 Both are saved in the run's folder."""
-import base64, io, json, math, time, zipfile
+import base64, io, json, math, shutil, time, zipfile
 from pathlib import Path
 import numpy as np
 
 import areas, core
 
 HAZ_NAMES = ["none", "low", "moderate", "significant", "extreme"]
+
+
+def target_crs(epsg, A):
+    """The export coordinate system: (epsg, pyproj CRS). The model runs in British National Grid; other systems are
+    for the GIS package only. Raises ValueError for unknown codes, systems that aren't 2D map coordinates, or ones
+    whose area of use doesn't cover the area."""
+    from pyproj import CRS, Transformer
+    try:
+        n = int(str(epsg).strip().upper().removeprefix("EPSG:"))
+    except ValueError:
+        raise ValueError(f"'{epsg}' isn't an EPSG code: use a number such as 27700")
+    try:
+        crs = CRS.from_epsg(n)
+    except Exception:
+        raise ValueError(f"EPSG:{n} isn't a known coordinate system")
+    if crs.is_compound:
+        crs = crs.sub_crs_list[0]
+    if not (crs.is_projected or crs.is_geographic) or len(crs.axis_info) != 2:
+        raise ValueError(f"EPSG:{n} ({crs.name}) isn't a 2D map coordinate system")
+    au = crs.area_of_use
+    if au:
+        lon, lat = Transformer.from_crs(27700, 4326, always_xy=True).transform(*_centre(A))
+        if not (au.west - 1e-6 <= lon <= au.east + 1e-6 and au.south - 1e-6 <= lat <= au.north + 1e-6):
+            raise ValueError(f"EPSG:{n} ({crs.name}) isn't meant for this location: its area of use is {au.name}")
+    return crs.to_epsg() or n, crs
+
+
+def _centre(A):
+    from shapely.geometry import Polygon
+    c = Polygon(A["poly_bng"]).centroid
+    return c.x, c.y
 
 
 def _load(run):
@@ -81,44 +112,72 @@ def _roads_sites(A, md, keep):
     return roads, sites
 
 
-def _write_layer(path, layer, rows, geom_type):
+def _write_layer(path, layer, rows, geom_type, epsg=27700):
     import shapely, pyogrio.raw
     if not rows: return
     keys = [k for k in rows[0] if k != "geom"]
     fields = [np.array([r[k] for r in rows], dtype=object if isinstance(rows[0][k], str) else None) for k in keys]
-    pyogrio.raw.write(str(path), shapely.to_wkb([r["geom"] for r in rows]), field_data=fields, fields=keys, layer=layer,
-                      driver="GPKG", crs="EPSG:27700", geometry_type=geom_type, append=Path(path).exists())
+    geoms = [r["geom"] for r in rows]
+    if epsg != 27700:
+        from pyproj import Transformer
+        tf = Transformer.from_crs(27700, epsg, always_xy=True)
+        geoms = shapely.transform(geoms, lambda xy: np.column_stack(tf.transform(xy[:, 0], xy[:, 1])))
+    pyogrio.raw.write(str(path), shapely.to_wkb(geoms), field_data=fields, fields=keys, layer=layer,
+                      driver="GPKG", crs=f"EPSG:{epsg}", geometry_type=geom_type, append=Path(path).exists())
 
 
-def gis(run):
+def _write_grid(path, arr, dtype, nodata, A, epsg):
+    """A model grid as GeoTIFF. In another system each output cell takes the largest value of the model cells it
+    covers, so depths, speeds and hazard classes stay modelled values and peaks are kept."""
     import rasterio
     from rasterio.transform import from_origin
+    from rasterio.warp import calculate_default_transform, reproject, Resampling
+    H, X0, Y1 = A["H"], A["X0"], A["Y1"]; ny, nx = arr.shape
+    src_t = from_origin(X0, Y1, H, H); arr = arr.astype(dtype)
+    if epsg == 27700:
+        out, t, crs = arr, src_t, "EPSG:27700"
+    else:
+        crs = f"EPSG:{epsg}"
+        t, w, h = calculate_default_transform("EPSG:27700", crs, nx, ny, X0, Y1 - ny * H, X0 + nx * H, Y1)
+        out = np.full((h, w), nodata, dtype)
+        reproject(arr, out, src_transform=src_t, src_crs="EPSG:27700", dst_transform=t, dst_crs=crs,
+                  resampling=Resampling.max, src_nodata=nodata, dst_nodata=nodata)
+    with rasterio.open(path, "w", driver="GTiff", height=out.shape[0], width=out.shape[1], count=1, dtype=dtype,
+                       crs=crs, transform=t, nodata=nodata, compress="deflate") as dst:
+        dst.write(out, 1)
+
+
+def gis(run, epsg=27700):
     from shapely.geometry import Polygon, LineString
     res, q, A = _load(run)
+    epsg, crs = target_crs(epsg, A)
     md, mv, hz, keep, m = _grids(res, A)
-    H, X0, Y1 = A["H"], A["X0"], A["Y1"]
-    work = run / "gis_export"; work.mkdir(exist_ok=True)
-    prof = dict(driver="GTiff", height=md.shape[0], width=md.shape[1], count=1, crs="EPSG:27700",
-                transform=from_origin(X0, Y1, H, H), compress="deflate")
+    H = A["H"]
+    work = run / "gis_export"
+    if work.exists(): shutil.rmtree(work)
+    work.mkdir()
     for name, arr, dtype, nod in (("max_depth_m", np.where(keep, md, np.nan), "float32", np.nan),
                                   ("max_speed_m_s", np.where(keep, mv, np.nan), "float32", np.nan),
                                   ("hazard_class", np.where(keep, hz, 255), "uint8", 255)):
-        with rasterio.open(work / f"{name}.tif", "w", dtype=dtype, nodata=nod, **prof) as dst:
-            dst.write(arr.astype(dtype), 1)
-    gp = work / "flood_results.gpkg"; gp.unlink(missing_ok=True)
-    _write_layer(gp, "area_outline", [dict(geom=Polygon(A["poly_bng"]), area=A["name"], run=res.get("run", run.name))], "Polygon")
-    _write_layer(gp, "buildings", _buildings(A, md, keep), "Polygon")
+        _write_grid(work / f"{name}.tif", arr, dtype, nod, A, epsg)
+    gp = work / "flood_results.gpkg"
+    lay = lambda name, rows, kind: _write_layer(gp, name, rows, kind, epsg)
+    lay("area_outline", [dict(geom=Polygon(A["poly_bng"]), area=A["name"], run=res.get("run", run.name))], "Polygon")
+    lay("buildings", _buildings(A, md, keep), "Polygon")
     roads, sites = _roads_sites(A, md, keep)
-    _write_layer(gp, "roads_flooded", roads, "LineString")
-    _write_layer(gp, "key_sites", sites, "Point")
+    lay("roads_flooded", roads, "LineString")
+    lay("key_sites", sites, "Point")
     ms = q.get("measures") or []
     attrs = lambda mm: dict(name=mm["name"], type=mm["type"], height_m=float(mm.get("height", 0) or 0), depth_m=float(mm.get("depth", 0) or 0),
                             width_m=float(mm.get("width", 0) or 0), cost=float(mm.get("cost") or 0))
-    _write_layer(gp, "defences_lines", [dict(geom=LineString(mm["pts"]), **attrs(mm)) for mm in ms if mm["type"] not in core.AREA_TYPES], "LineString")
-    _write_layer(gp, "defences_areas", [dict(geom=Polygon(mm["pts"]), **attrs(mm)) for mm in ms if mm["type"] in core.AREA_TYPES], "Polygon")
+    lay("defences_lines", [dict(geom=LineString(mm["pts"]), **attrs(mm)) for mm in ms if mm["type"] not in core.AREA_TYPES], "LineString")
+    lay("defences_areas", [dict(geom=Polygon(mm["pts"]), **attrs(mm)) for mm in ms if mm["type"] in core.AREA_TYPES], "Polygon")
+    coords = (f"British National Grid (EPSG:27700); grids at the model's {H} m cells." if epsg == 27700 else
+              f"{crs.name} (EPSG:{epsg}), converted from the model's British National Grid. Grids are reprojected\n"
+              f"from the model's {H} m cells: each output cell holds the largest value of the model cells it covers. time_series.nc stays in British National Grid.")
     (work / "README.txt").write_text(f"""UK Flood Sandbox: GIS export
 Area: {A['name']}    Run: {res.get('run', run.name)}    Exported: {time.strftime('%Y-%m-%d %H:%M')}
-Coordinates: British National Grid (EPSG:27700); grids at the model's {H} m cells.
+Coordinates: {coords}
 
 max_depth_m.tif     deepest water during the run, metres (blank outside the model and under buildings)
 max_speed_m_s.tif   fastest water, m/s
@@ -137,8 +196,8 @@ Sources: terrain from national LiDAR; buildings, roads and sites (c) OpenStreetM
 functions Huizinga, de Moel and Szewczyk (2017) doi:10.2760/16510. Indicative results from a simplified model.
 """)
     if (run / "time_series.nc").exists():
-        import shutil; shutil.copy(run / "time_series.nc", work / "time_series.nc")
-    out = run / "gis_export.zip"
+        shutil.copy(run / "time_series.nc", work / "time_series.nc")
+    out = run / ("gis_export.zip" if epsg == 27700 else f"gis_export_epsg{epsg}.zip")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(work.iterdir()): z.write(f, f"{run.name}_gis/{f.name}")
     for f in work.iterdir(): f.unlink()

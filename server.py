@@ -492,8 +492,10 @@ class Handler(BaseHTTPRequestHandler):
             if "/" in rid or ".." in rid or not (run / "result.json").exists():
                 return self._send(404, {"error": "run not found (results from before this version cannot be exported; rerun it)"})
             try:
-                if kind == "gis": out = export.gis(run)
+                if kind == "gis": out = export.gis(run, body.get("epsg", 27700))
                 else: out = export.report(run, body.get("description", ""), body.get("snapshot"), body.get("ref"), float(body.get("factor", 1) or 1))
+            except ValueError as ex:
+                return self._send(400, {"error": str(ex)})
             except Exception as ex:
                 import traceback; traceback.print_exc()
                 return self._send(500, {"error": f"{type(ex).__name__}: {ex}"})

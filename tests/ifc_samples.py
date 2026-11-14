@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 
-def make_house(path, E=0.0, N=0.0, rot=0.0, ground=0.0, georef=True, unit="METERS", empty=False):
+def make_house(path, E=0.0, N=0.0, rot=0.0, ground=0.0, georef=True, unit="METERS", empty=False, crs="EPSG:27700"):
     import ifcopenshell.api as api
     import ifcopenshell.api.project, ifcopenshell.api.root, ifcopenshell.api.unit, ifcopenshell.api.context
     import ifcopenshell.api.georeference, ifcopenshell.api.aggregate, ifcopenshell.api.geometry, ifcopenshell.api.spatial
@@ -17,7 +17,7 @@ def make_house(path, E=0.0, N=0.0, rot=0.0, ground=0.0, georef=True, unit="METER
     body = api.context.add_context(m, context_type="Model", context_identifier="Body", target_view="MODEL_VIEW", parent=ctx)
     if georef:
         api.georeference.add_georeferencing(m)
-        api.georeference.edit_georeferencing(m, projected_crs={"Name": "EPSG:27700"}, coordinate_operation={
+        api.georeference.edit_georeferencing(m, projected_crs={"Name": crs}, coordinate_operation={
             "Eastings": E, "Northings": N, "OrthogonalHeight": 0.0, "XAxisAbscissa": math.cos(math.radians(rot)),
             "XAxisOrdinate": math.sin(math.radians(rot)), "Scale": 1.0 / k})
     site = api.root.create_entity(m, ifc_class="IfcSite", name="Site")

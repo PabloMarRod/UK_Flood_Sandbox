@@ -45,8 +45,8 @@ indicative damage.
 - **Results**: depth over time, maximum depth and speed, hazard to people (Defra/EA method), buildings, roads and
   key sites affected, indicative damage (JRC depth-damage functions), a comparison with the EA national
   surface-water map, and a "difference" view between runs.
-- **Outputs**: a one-page PDF report, MP4 videos, GeoTIFF and GeoPackage layers, and the full time series as
-  CF NetCDF, for QGIS, ArcGIS or Python.
+- **Outputs**: a one-page PDF report, MP4 videos, GeoTIFF and GeoPackage layers (in British National Grid or
+  another coordinate system by EPSG code), and the full time series as CF NetCDF, for QGIS, ArcGIS or Python.
 
 <p>
   <img src="docs/images/results.png" width="32%" alt="Results window: flood extent, depths, hazard and what the drainage network took in">
