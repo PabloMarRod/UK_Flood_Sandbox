@@ -65,7 +65,7 @@ data downloads.
 1. Download or clone this repository.
 2. Run `start_windows.bat` (Windows) or `./start_mac_linux.sh` (macOS, Linux). The first start creates a Python
    environment and installs the dependencies, which takes a few minutes.
-3. Your browser opens at http://localhost:8765. The Jesmond Vale (Newcastle) preset is ready to run; use
+3. Your browser opens with a preconfigured scenario (the Jesmond Vale in Newcastle upon Tyne) that is ready to run; use
    **New area** to draw your own.
 
 The app runs a local web server that only accepts connections from your own computer. On first start it
