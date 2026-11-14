@@ -73,6 +73,9 @@ select.num{width:auto}
 .opt .num{width:80px;padding:5px 8px;font-size:14px}
 .preview{border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px 12px;margin:4px 0 14px}
 #hyeto{width:100%;height:64px;display:block}
+#rainEdit{width:100%;height:170px;display:block;margin-top:8px;touch-action:none;cursor:ns-resize;user-select:none;-webkit-user-select:none}
+#rainPasteTxt{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;margin-top:6px}
+#rainPasteBox .inline{margin-top:6px}
 .pvstats{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted);margin-top:6px}
 .pvstats b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .msg{font-size:13px;line-height:1.45;padding:8px 10px;border-radius:7px;margin-bottom:12px}
@@ -359,7 +362,19 @@ label.chk.big{font-size:14px;color:var(--ink)}
           <label><input type="radio" name="profile" value="front"><svg viewBox="0 0 44 22"><path d="M2 22L12 2L42 22z" fill="#8fb3c9"/></svg>Early peak</label>
           <label><input type="radio" name="profile" value="centre" checked><svg viewBox="0 0 44 22"><path d="M2 22L22 2L42 22z" fill="#8fb3c9"/></svg>Middle peak</label>
           <label><input type="radio" name="profile" value="late"><svg viewBox="0 0 44 22"><path d="M2 22L32 2L42 22z" fill="#8fb3c9"/></svg>Late peak</label>
-          <label><input type="radio" name="profile" value="obs2012"><svg viewBox="0 0 44 22"><path d="M2 22V2h6v10h6v9h6v-6h6v4h6v3z" fill="#8fb3c9"/></svg>2012 pattern</label>
+          <label><input type="radio" name="profile" value="custom"><svg viewBox="0 0 44 22"><path d="M2 22V14h8V6h8V2h8v12h8v4h8v4z" fill="#8fb3c9"/></svg>Custom</label>
+        </div>
+        <div id="rainEditor" hidden>
+          <svg id="rainEdit" role="img" aria-label="Custom rain pattern: drag the bars up or down"></svg>
+          <div class="hint">Drag a bar up or down to set the rain in those 5 minutes; drag across to shape several at once.
+            <button type="button" class="linkbtn" id="rainPasteBtn">Paste values</button> ·
+            <button type="button" class="linkbtn" id="rainReset">Start again</button></div>
+          <div id="rainPasteBox" hidden>
+            <textarea id="rainPasteTxt" rows="4" placeholder="Rain in mm/h for each 5 minutes, one per line or separated by commas or spaces (a spreadsheet column pastes as it is)"></textarea>
+            <div class="inline"><button type="button" class="ghost sm" id="rainPasteGo">Use these values</button>
+              <button type="button" class="linkbtn" id="rainPasteCancel">Cancel</button></div>
+            <div class="hint" id="rainPasteMsg"></div>
+          </div>
         </div>
       </div>
       <div class="field">
@@ -729,7 +744,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const fmtMin = m => `${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,'0')}`;
 const fmtVol = v => v >= 1e4 ? (v/1000).toFixed(0)+'k m³' : Math.round(v).toLocaleString()+' m³';
 const fmtS = s => s < 60 ? `${Math.max(1,Math.round(s))} s` : `${Math.round(s/60)} min`;
-const SHAPES = {uniform:'even rate', front:'early peak', centre:'middle peak', late:'late peak', obs2012:'2012 pattern'};
+const SHAPES = {uniform:'even rate', front:'early peak', centre:'middle peak', late:'late peak', custom:'custom pattern', obs2012:'2012 pattern'};
 const SOILS = {dry:'dry ground', normal:'normal ground', wet:'saturated ground', sealed:'no infiltration'};
 const durTxt = m => m < 60 ? `${m} min` : (m % 60 ? `${(m/60).toFixed(1)} hours` : `${m/60} hour${m===60?'':'s'}`);
 function describe(p){
@@ -1168,6 +1183,7 @@ let burstLL = null;
 function params(){
   const fd = new FormData(form), n = k => +fd.get(k);
   return {area: AREA.id, depth:n('depth'), duration:n('duration'), profile:fd.get('profile'), uplift:n('uplift'),
+          ...(fd.get('profile') === 'custom' && RAIN ? {rain: RAIN.map(v => +v.toFixed(1))} : {}),
           inflow:fd.get('inflow'), base_q:n('base_q'), factor:n('factor'),
           wave_base:n('wave_base'), wave_peak:n('wave_peak'), wave_start:n('wave_start'), wave_rise:n('wave_rise'), wave_fall:n('wave_fall'),
           burst:fd.get('burst')==='on', burst_lat:burstLL?burstLL.lat:null, burst_lng:burstLL?burstLL.lng:null,
@@ -1198,6 +1214,7 @@ function buildRivers(){
   }).join('');
 }
 function syncForm(){
+  rainSync();
   const p = params(), riv = AREA.features.river_inflow, drawn = !riv, list = S.inflows || [];
   const anyWave = p.rivers.some(r => r.mode==='wave');
   $('riverField').hidden = drawn; $('riverList').hidden = !(drawn && list.length);
@@ -1255,6 +1272,121 @@ async function check(){
     (q.burst ? `<span>Burst <b>${q.burst_q} m³/s</b></span>` : '') +
     `<span>Estimated run time <b>about ${fmtS(q.est_s)}</b></span>`;
 }
+/* ---------------- custom rain pattern: one bar per 5 minutes, in mm/h ---------------- */
+const RSTEP = 5, RMAX = 300, RTOPS = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300];
+let RAIN = null, rainTop = 0, lastShape = 'centre', rainDrag = null, rainHover = -1;
+function cdfJS(pf, x){
+  x = Math.min(Math.max(x, 0), 1);
+  if(pf === 'uniform') return x;
+  const m = {front:.25, centre:.5, late:.75}[pf] ?? .5;
+  return x < m ? x*x/m : 1 - (1-x)*(1-x)/(1-m);
+}
+const shapeRain = (pf, depth, dur) => { const n = Math.max(1, Math.round(dur/RSTEP));
+  return Array.from({length:n}, (_, i) => (cdfJS(pf, (i+1)/n) - cdfJS(pf, i/n)) * depth * 60/RSTEP); };
+const rainDepth = r => r.reduce((a, b) => a + b, 0) * RSTEP/60;
+function resampleRain(r, n){                 // stretch or squeeze the shape to n bars, keeping the total depth
+  const tot = r.reduce((a, b) => a + b, 0); if(!tot) return Array(n).fill(0);
+  const cum = [0]; r.forEach(v => cum.push(cum[cum.length-1] + v/tot));
+  const at = x => { const p = x*r.length, i = Math.min(Math.floor(p), r.length-1); return cum[i] + (cum[i+1]-cum[i])*(p-i); };
+  return Array.from({length:n}, (_, k) => Math.min(RMAX, (at((k+1)/n) - at(k/n)) * tot));
+}
+function setDuration(min){                   // the duration list holds common lengths; a pasted pattern may need another
+  const sel = form.duration;
+  if(![...sel.options].some(o => +o.value === min)){
+    const o = new Option(min % 60 ? `${min} min` : `${min/60} hour${min > 60 ? 's' : ''}`, min);
+    const after = [...sel.options].find(x => +x.value > min); sel.add(o, after || null);
+  }
+  sel.value = String(min);
+}
+function rainChanged(){                      // depth follows the bars; then the usual check and preview
+  form.depth.value = +rainDepth(RAIN).toFixed(1);
+  drawRainEdit(); clearTimeout(checkT); checkT = setTimeout(check, 250);
+}
+function rainSync(){
+  const on = new FormData(form).get('profile') === 'custom';
+  $('rainEditor').hidden = !on;
+  if(!on){ lastShape = new FormData(form).get('profile') || lastShape; $('rainReset').textContent = `Start again from the ${SHAPES[lastShape]}`; return; }
+  const dur = +form.duration.value, n = Math.round(dur/RSTEP);
+  if(!RAIN){ RAIN = shapeRain(lastShape, +form.depth.value || 30, dur); rainTop = 0; }
+  else if(RAIN.length !== n){ RAIN = resampleRain(RAIN, n); rainTop = 0; }
+  if(document.activeElement !== form.depth) form.depth.value = +rainDepth(RAIN).toFixed(1);   // not while it is being typed
+  drawRainEdit();
+}
+function rainGeom(){
+  const svg = $('rainEdit'), W = svg.clientWidth || 500, H = 170, L = 38, B = 20, T = 20;
+  return {svg, W, H, L, B, T, bw: (W - L - 4) / RAIN.length, ph: H - B - T};
+}
+function drawRainEdit(){
+  if(!RAIN || $('rainEditor').hidden) return;
+  const g = rainGeom(), {svg, W, H, L, B, T, bw, ph} = g, NS = 'http://www.w3.org/2000/svg';
+  if(!rainTop) rainTop = RTOPS.find(t => t >= Math.max(...RAIN, 1) * 1.15) || RMAX;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
+  const el = (tag, a) => { const e = document.createElementNS(NS, tag); for(const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+  for(const f of [0, .5, 1]){
+    const y = T + ph * (1 - f);
+    el('line', {x1:L, x2:W-4, y1:y, y2:y, stroke:'#d7dfe0', 'stroke-width':1});
+    el('text', {x:L-5, y:y+4, 'text-anchor':'end', 'font-size':10, fill:'#5d7179'}).textContent = Math.round(rainTop*f);
+  }
+  el('text', {x:L-5, y:10, 'text-anchor':'end', 'font-size':10, fill:'#5d7179'}).textContent = 'mm/h';
+  const every = [15, 30, 60, 120].find(m => m/RSTEP*bw >= 34) || 120;
+  RAIN.forEach((v, i) => {
+    const h = Math.min(v, rainTop) / rainTop * ph;
+    el('rect', {x:L + i*bw + 0.5, y:T + ph - h, width:Math.max(bw - 1, 1), height:Math.max(h, 0), fill: i === rainHover ? '#185f9e' : '#8fb3c9'});
+    const m = (i+1) * RSTEP;
+    if(m % every === 0) el('text', {x:L + (i+1)*bw, y:H-6, 'text-anchor': i === RAIN.length - 1 ? 'end' : 'middle', 'font-size':10, fill:'#5d7179'}).textContent = m % 60 ? `${m}m` : `${m/60}h`;
+  });
+  if(rainHover >= 0){
+    const v = RAIN[rainHover], x = Math.min(Math.max(L + (rainHover + .5)*bw, L + 60), W - 60);
+    el('text', {x, y:11, 'text-anchor':'middle', 'font-size':11, fill:'#16303a'}).textContent =
+      `${rainHover*RSTEP}–${(rainHover+1)*RSTEP} min: ${v.toFixed(0)} mm/h`;
+  }
+}
+function rainAt(ev){
+  const g = rainGeom(), r = g.svg.getBoundingClientRect(), x = (ev.clientX - r.left) * g.W / r.width, y = (ev.clientY - r.top) * g.H / r.height;
+  const i = Math.min(Math.max(Math.floor((x - g.L) / g.bw), 0), RAIN.length - 1);
+  const v = Math.round(Math.min(Math.max((g.T + g.ph - y) / g.ph, 0), 1) * rainTop);
+  return {i, v};
+}
+$('rainEdit').addEventListener('pointerdown', ev => {
+  if(!RAIN) return;
+  ev.preventDefault(); $('rainEdit').setPointerCapture(ev.pointerId);
+  const {i, v} = rainAt(ev); RAIN[i] = v; rainDrag = {i, v}; rainHover = i; drawRainEdit();
+});
+$('rainEdit').addEventListener('pointermove', ev => {
+  if(!RAIN) return;
+  const {i, v} = rainAt(ev); rainHover = i;
+  if(rainDrag){                               // fill the bars passed over since the last move
+    const a = rainDrag.i, d = i - a, s = Math.sign(d) || 1;
+    for(let k = a; k !== i + s; k += s) RAIN[k] = d ? Math.round(rainDrag.v + (v - rainDrag.v) * (k - a) / d) : v;
+    rainDrag = {i, v};
+  }
+  drawRainEdit();
+});
+const rainEnd = () => { if(rainDrag){ rainDrag = null; rainTop = 0; rainChanged(); } };
+$('rainEdit').addEventListener('pointerup', rainEnd);
+$('rainEdit').addEventListener('pointercancel', rainEnd);
+$('rainEdit').addEventListener('pointerleave', () => { if(!rainDrag){ rainHover = -1; drawRainEdit(); } });
+form.depth.addEventListener('input', () => {   // a typed total scales the drawn shape
+  if(new FormData(form).get('profile') !== 'custom' || !RAIN) return;
+  const want = Math.max(+form.depth.value || 0, 0), tot = rainDepth(RAIN);
+  RAIN = tot > 0 ? RAIN.map(v => Math.min(RMAX, v * want / tot)) : shapeRain('uniform', want, RAIN.length * RSTEP);
+  rainTop = 0;
+});
+$('rainReset').onclick = () => { RAIN = shapeRain(lastShape, +form.depth.value || 30, +form.duration.value); rainTop = 0; rainChanged(); };
+$('rainPasteBtn').onclick = () => { $('rainPasteBox').hidden = false; $('rainPasteMsg').textContent = ''; $('rainPasteTxt').focus(); };
+$('rainPasteCancel').onclick = () => { $('rainPasteBox').hidden = true; };
+$('rainPasteGo').onclick = () => {
+  const vals = $('rainPasteTxt').value.trim().split(/[\s,;]+/).filter(Boolean).map(Number);
+  const maxN = 360 / RSTEP;
+  const bad = !vals.length ? 'Paste at least one value.'
+    : vals.some(v => !Number.isFinite(v) || v < 0 || v > RMAX) ? `Each value must be a number of mm/h from 0 to ${RMAX}.`
+    : vals.length > maxN ? `At most ${maxN} values (6 hours of 5-minute steps); you pasted ${vals.length}.` : '';
+  if(bad){ $('rainPasteMsg').textContent = bad; return; }
+  RAIN = vals; rainTop = 0; setDuration(vals.length * RSTEP);
+  $('rainPasteBox').hidden = true; $('rainPasteTxt').value = '';
+  rainChanged();
+};
+window.addEventListener('resize', drawRainEdit);
 form.addEventListener('input', () => { syncForm(); clearTimeout(checkT); checkT = setTimeout(check, 250); });
 form.querySelectorAll('input[name=base_q]').forEach(e=>e.addEventListener('focus',()=>form.querySelector('input[value=base]').checked=true));
 form.querySelectorAll('input[name=factor]').forEach(e=>e.addEventListener('focus',()=>form.querySelector('input[value=gauge2012]').checked=true));

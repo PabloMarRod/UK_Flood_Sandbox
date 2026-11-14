@@ -20,8 +20,8 @@ indicative damage.
 - **Anywhere in the UK**: terrain from national LiDAR (Environment Agency, Welsh Government, Scottish Remote
   Sensing Portal, DfI and OSNI), buildings, roads and land cover from OpenStreetMap, rivers and flood defences,
   prepared automatically in a few minutes.
-- **Floods from rain, rivers and the sea**: designed or recorded storms (including the pattern of Newcastle's
-  June 2012 storm), river flood waves of up to 3,000 m³/s entering across the channel's width, burst mains, and
+- **Floods from rain, rivers and the sea**: designed storms (even, early, middle or late peak) or your own
+  pattern, drawn on a graph or pasted as 5-minute values, river flood waves of up to 3,000 m³/s entering across the channel's width, burst mains, and
   26 tidal estuaries driven by recorded or synthetic tides, with gauged river flows where available.
 - **Mitigation**: draw walls, embankments, demountable barriers, storage basins, raised kerbs, channel
   deepening, permeable surfaces, rain gardens, swales, tree planting, green roofs, storage tanks, pumps and

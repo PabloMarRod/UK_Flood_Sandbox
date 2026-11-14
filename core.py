@@ -24,7 +24,8 @@ LIMITS = dict(depth=(0, 200), duration=(5, 360), sim=(0.5, 8.0), base_q=(0, 30),
 RIVER_LIMIT = 3000.0              # m3/s, per detected inflow in drawn areas (above the largest UK river floods)
 TIDE_LIMITS = dict(tide_hw=(-3, 12), tide_lw=(-8, 5), tide_hw_time=(0, 1440), surge_peak=(0, 3), surge_time=(0, 1440),
                    surge_dur=(30, 2880), slr=(0, 2), river_base=(0, 5000), river_peak=(0, 8000))
-PROFILES = ("uniform", "front", "centre", "late", "obs2012")
+PROFILES = ("uniform", "front", "centre", "late", "custom")
+RAIN_MAX = 300.0                   # mm/h, the most a custom pattern may hold in one 5-minute step
 INFLOWS = ("none", "base", "gauge2012", "wave")
 SOILS = {  # Horton (max, min mm/h, decay 1/h) for green and garden/mixed cells; assumed values
     "dry": ((40, 5, 4), (15, 2, 4)), "normal": ((20, 3, 4), (8, 1, 4)), "wet": ((5, 2, 2), (2, 0.5, 2)), "sealed": None}
@@ -81,11 +82,6 @@ def _cdf(profile, x):
     x = np.clip(x, 0, 1)
     if profile == "uniform":
         return x
-    if profile == "obs2012":
-        obs = json.load(open(DATA / "obs_2012-06-28.json"))["rain"]
-        ks = sorted(k for k in obs if "2012-06-28T15:00" <= k < "2012-06-28T17:30")
-        vals = np.array([obs[k] for k in ks]); cum = np.concatenate([[0], np.cumsum(vals)]) / vals.sum()
-        return np.interp(x, np.linspace(0, 1, len(cum)), cum)
     m = dict(front=0.25, centre=0.5, late=0.75)[profile]
     return np.where(x < m, x ** 2 / m, 1 - (1 - x) ** 2 / (1 - m))
 
@@ -207,6 +203,21 @@ def validate(A, p):
                  uplift="Climate uplift", wave_base="Base flow", wave_peak="Peak flow", wave_start="Wave start",
                  wave_rise="Time to peak", wave_fall="Fall time", burst_q="Burst flow", burst_start="Burst start",
                  burst_dur="Burst duration", blockage="Blockage")
+    if q["profile"] == "custom":                 # the pattern itself: mm/h in each 5-minute step; depth and duration follow
+        rain = p.get("rain")
+        if not isinstance(rain, list) or not rain:
+            raise ValueError("Draw or paste the custom rain pattern")
+        try:
+            rain = [float(v) for v in rain]
+        except (TypeError, ValueError):
+            raise ValueError("Custom rain values must be numbers (mm/h)")
+        if len(rain) * STEP_MIN > LIMITS["duration"][1]:
+            raise ValueError(f"A custom pattern can be at most {LIMITS['duration'][1] // 60:g} hours ({LIMITS['duration'][1] // STEP_MIN} values)")
+        if not all(0 <= v <= RAIN_MAX for v in rain):
+            raise ValueError(f"Custom rain must be between 0 and {RAIN_MAX:g} mm/h in each 5 minutes")
+        q["rain"] = [round(v, 1) for v in rain]
+        q["duration"] = len(rain) * STEP_MIN
+        q["depth"] = round(sum(q["rain"]) * STEP_MIN / 60, 1)
     for k, (lo, hi) in LIMITS.items():
         if not lo <= q[k] <= hi:
             raise ValueError(f"{names[k]} must be between {lo:g} and {hi:g}")
@@ -327,6 +338,8 @@ def burst_cell(A, lat, lng):
 
 def hyetograph(q):
     """Rain intensity (mm/h) per 5-min step over the storm."""
+    if q["profile"] == "custom":
+        return np.asarray(q["rain"], float) * (1 + q["uplift"] / 100)
     n = q["duration"] // STEP_MIN
     edges = _cdf(q["profile"], np.linspace(0, 1, n + 1))
     return np.diff(edges) * q["depth"] * (1 + q["uplift"] / 100) * 60 / STEP_MIN

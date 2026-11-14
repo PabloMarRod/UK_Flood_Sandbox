@@ -35,7 +35,7 @@ The server only listens on your own machine (127.0.0.1). Keep its window open wh
 - `static/index.html`: the web page.
 - `areas/<id>/`: the preset and the current drawn area, each with its definition (`area.json`), downloaded data (`data/`) and cached
   mesh, map layers and baseline (`cache/`). `areas/jesmond-vale` is the preset.
-- `data/`: EA gauge records for 28 June 2012 (used by the preset and the "2012 pattern" storm shape).
+- `data/`: EA gauge records for 28 June 2012 (used by the preset's replay and the 2012 river record).
   `fetch_inputs.py` downloads the preset's inputs again from the original sources.
 - `runs/`: one folder per simulation (see above); kept permanently.
 
@@ -744,7 +744,11 @@ engine run.
   and peak per watercourse, shared timing). Canals and culverted sections are skipped; the River Tyne is tidal and is
   flagged, not modelled. Flow values are yours to set: there is no gauge data for drawn areas.
 - Jesmond Vale preset: 900 x 1,190 m, 73,688 triangles, gauged river inflow and the Ouseburn culvert outlet.
-- Rain is uniform over the domain in 5-minute steps. Climate uplift multiplies the whole storm, with presets from the
+- Rain is uniform over the domain in 5-minute steps. The storm shape is even, an early, middle or late peak (a total
+  depth spread over the duration), or custom: one intensity per 5 minutes (0 to 300 mm/h, up to 6 hours), set by
+  dragging bars on a graph that starts from the last shape chosen, or pasted as a column of values. In a custom
+  pattern the depth and duration follow from the values; typing a new depth scales the pattern, and changing the
+  duration stretches it, keeping the depth. Climate uplift multiplies the whole storm, with presets from the
   Environment Agency peak rainfall allowances for the Tyne management catchment (version 21 March 2022).
 - River inflow enters at the top of the box: none, steady, the 2012 Crag Hall record (scaled), or a synthetic flood wave
   (base flow, peak, start, time to peak, fall time; smooth cosine rise and fall).

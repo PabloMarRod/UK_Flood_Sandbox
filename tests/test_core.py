@@ -64,3 +64,23 @@ def test_jrc_curves():
     assert core.JRC_UK_MAX["residential"] == pytest.approx(758.12)
     for curve in core.JRC_EUROPE.values():
         assert curve[0] == 0 and curve[-1] == 1 and all(a <= b for a, b in zip(curve, curve[1:]))
+
+
+def test_custom_rain_pattern(preset):
+    rain = [0, 12, 60, 120, 30, 6]                                   # mm/h in each 5 minutes
+    q, _ = core.validate(preset, base(profile="custom", rain=rain, depth=999, duration=999, uplift=20))
+    assert q["duration"] == 30 and q["depth"] == 19.0                 # both follow the pattern, whatever was sent
+    assert core.hyetograph(q).tolist() == pytest.approx([v * 1.2 for v in rain])
+
+
+@pytest.mark.parametrize("rain,msg", [(None, "Draw or paste"), ([], "Draw or paste"), (["a"], "numbers"),
+                                      ([10, -1], "between 0 and"), ([10, 301], "between 0 and"),
+                                      ([1] * 73, "at most"), ([300] * 60, "Rain must be between")])
+def test_custom_rain_pattern_checks(preset, rain, msg):
+    with pytest.raises(ValueError, match=msg):
+        core.validate(preset, base(profile="custom", rain=rain))
+
+
+def test_2012_pattern_no_longer_offered(preset):
+    with pytest.raises(ValueError, match="unknown storm profile"):
+        core.validate(preset, base(profile="obs2012"))
