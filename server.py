@@ -464,7 +464,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"id": rid})
         if p == "/api/areas":
             try:
-                A = areas.new_area(body.get("name", "My area"), body.get("poly", []), int(body.get("H", 5)))
+                A = areas.new_area(body.get("name", "My area"), body.get("poly", []), body.get("H", 5))
             except (ValueError, TypeError) as e:
                 return self._send(400, {"error": str(e)})
             with LOCK:

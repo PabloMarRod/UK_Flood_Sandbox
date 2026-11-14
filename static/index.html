@@ -156,6 +156,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
 .drow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .seg.mini{margin:0}
 .seg.mini button{padding:6px 10px;flex:none}
+.cellpick{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.cellpick input[type=range]{width:120px}
+.cellpick output{min-width:3em;font-variant-numeric:tabular-nums}
 .dhint{font-size:13px;color:var(--muted);margin:10px 0 8px;line-height:1.45}
 .budget-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;margin-bottom:12px}
 .bdot{flex:none;width:10px;height:10px;border-radius:50%;background:#c4cfd1;margin-top:4px}
@@ -293,7 +296,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
   <details>
     <summary>About the model</summary>
     <ul>
-      <li>OpenSWMM 6 2D, running on this computer. A 5 or 10 m grid split into triangles; buildings from OpenStreetMap are walls.</li>
+      <li>OpenSWMM 6 2D, running on this computer. A grid of 1 to 10 m cells split into triangles; buildings from OpenStreetMap are walls.</li>
       <li>Terrain: Environment Agency LIDAR Composite DTM 1 m, downloaded for each area.</li>
       <li>Drawn areas: water leaves wherever the ground falls away outwards across the outline (small dots on the map). Where the ground rises outwards the edge is a wall, and runoff from outside the outline is not included. Mapped rivers and streams entering the outline get an inflow you can set (blue markers); where they leave, the edge is always open (dark markers). The tidal River Tyne is not modelled.</li>
       <li>Storage tanks, pumps and flood gates are linked 1D elements: a tank's inlet takes surface water at up to its inflow rate into a sealed tank until full; a pump lifts water from a wet well at a low point once it fills to the start depth, onto another spot or out of the area; a flood gate is a wall with one opening per cell along it, open until a control rule closes them all at a set time or when water beside it reaches a set depth.</li>
@@ -530,10 +533,10 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <button type="button" data-tool="rect" aria-pressed="true">Rectangle</button>
       <button type="button" data-tool="poly" aria-pressed="false">Polygon</button>
     </div>
-    <div class="seg mini" role="group" aria-label="Cell size">
-      <button type="button" data-cell="5" aria-pressed="true">5 m cells</button>
-      <button type="button" data-cell="10" aria-pressed="false">10 m cells</button>
-    </div>
+    <label class="cellpick" for="cellSize">Cell size
+      <input type="range" id="cellSize" min="1" max="10" step="1" value="5">
+      <output id="cellOut" for="cellSize">5 m</output>
+    </label>
     <input class="num" id="areaName" value="My area" aria-label="Area name" style="width:150px">
   </div>
   <p class="dhint" id="drawHint"></p>
@@ -639,7 +642,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
     <ul class="note" id="bigList" style="padding-left:18px"></ul>
     <div class="actions">
       <button type="button" class="ghost" id="bigBack">Back to drawing</button>
-      <button type="button" class="ghost" id="bigTen">Use 10 m cells</button>
+      <button type="button" class="ghost" id="bigTen">Use larger cells</button>
       <button type="button" class="primary" id="bigGo">Prepare anyway</button>
     </div>
   </div>
@@ -989,6 +992,9 @@ function areaKm2(pts){
   let a = 0; for(let k=0;k<xy.length;k++){ const [x1,y1]=xy[k], [x2,y2]=xy[(k+1)%xy.length]; a += x1*y2 - x2*y1; }
   return Math.abs(a)/2/1e6;
 }
+// cell size: whole metres from 1 to 10; the suggested coarser size doubles it, capped at 10
+const coarser = c => Math.min(10, c * 2);
+function setCell(c){ D.cell = c; $('cellSize').value = c; $('cellOut').textContent = `${c} m`; }
 // live size feedback while drawing: warnings, never a block (except the memory ceiling)
 function sizeInfo(pts, cell){
   const km2 = areaKm2(pts), cells = 2*km2*1e6/(cell*cell)*0.85, perH = 5 + BUDGET.k*cells;
@@ -999,25 +1005,26 @@ function budget(pts){
   const z = sizeInfo(pts, D.cell);
   if(z.km2 === 0){ $('budgetTxt').textContent = 'Draw an area to see how long it will take.'; $('drawGo').disabled = true; return; }
   let cls, msg;
-  if(z.cells > BUDGET.hard_cells){ cls='red'; msg = `Too large for this computer's memory: about ${(z.cells/1e6).toFixed(1)} million cells.` + (D.cell===5 ? ' Use 10 m cells or a smaller area.' : ' Draw a smaller area.'); }
-  else if(z.cells > BUDGET.max_cells || z.run2h > BUDGET.max_run_s){ cls='amber'; msg = `Large: ${z.km2.toFixed(2)} km², about ${(z.cells/1000).toFixed(0)}k cells. A 2-hour storm would take about ${fmtS(z.run2h)} on this computer, more with a tidal river.` + (D.cell===5 ? ' 10 m cells would be much quicker.' : ''); }
+  if(z.cells > BUDGET.hard_cells){ cls='red'; msg = `Too large for this computer's memory: about ${(z.cells/1e6).toFixed(1)} million cells.` + (D.cell < 10 ? ` Use ${coarser(D.cell)} m cells or a smaller area.` : ' Draw a smaller area.'); }
+  else if(z.cells > BUDGET.max_cells || z.run2h > BUDGET.max_run_s){ cls='amber'; msg = `Large: ${z.km2.toFixed(2)} km², about ${(z.cells/1000).toFixed(0)}k cells. A 2-hour storm would take about ${fmtS(z.run2h)} on this computer, more with a tidal river.` + (D.cell < 10 ? ` ${coarser(D.cell)} m cells would be much quicker.` : ''); }
   else { cls='ok'; msg = `${z.km2.toFixed(2)} km², about ${(z.cells/1000).toFixed(0)}k cells. Roughly ${fmtS(z.perH)} per simulated hour on this computer.`; }
+  if(D.cell <= 2) msg += ' Cells this fine are slow, and mapped building outlines are rarely accurate to 1 to 2 m.';
   line.classList.add(cls); $('budgetTxt').textContent = msg;
   $('drawGo').disabled = !(D.done && cls !== 'red');
 }
-// before preparing a large area: what to expect, and the option of 10 m cells
+// before preparing a large area: what to expect, and the option of coarser cells
 function confirmSize(pts){
   const z = sizeInfo(pts, D.cell);
   if(z.cells <= BUDGET.max_cells && z.run2h <= BUDGET.max_run_s) return Promise.resolve('go');
-  const z10 = D.cell === 5 ? sizeInfo(pts, 10) : null;
+  const c2 = coarser(D.cell), z10 = D.cell < 10 ? sizeInfo(pts, c2) : null;
   const items = [
     `<li>Size: ${z.km2.toFixed(2)} km² at ${D.cell} m cells, about ${(z.cells/1000).toFixed(0)}k cells.</li>`,
     `<li>Preparing it (downloads, mesh and 3D scene): roughly ${fmtS(z.prep)}.</li>`,
     `<li>Running a storm on this computer: about ${fmtS(z.perH)} per simulated hour, so about ${fmtS(z.run2h)} for a 2-hour storm. With a tidal river in the area, expect several times longer.</li>`,
     z.cells > 500000 ? '<li>The 3D view may play back slowly on modest computers.</li>' : '',
-    z10 ? `<li>With 10 m cells: about ${(z10.cells/1000).toFixed(0)}k cells, and runs typically 4 to 8 times faster (a quarter of the cells, and longer time steps). Streets and walls are then less sharply resolved.</li>` : ''];
+    z10 ? `<li>With ${c2} m cells: about ${(z10.cells/1000).toFixed(0)}k cells (${((c2/D.cell)**2).toFixed(1)} times fewer) and longer time steps, so runs are several times faster. Streets and walls are then less sharply resolved.</li>` : ''];
   $('bigList').innerHTML = items.join('');
-  $('bigTen').hidden = !z10;
+  $('bigTen').hidden = !z10; $('bigTen').textContent = `Use ${c2} m cells`;
   return new Promise(res => {
     const done = v => { $('dlgBig').close(); res(v); };
     $('bigGo').onclick = () => done('go'); $('bigBack').onclick = () => done('back'); $('bigTen').onclick = () => done('ten');
@@ -1101,16 +1108,13 @@ document.addEventListener('keydown', e => {
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => {
   D.tool = b.dataset.tool; document.querySelectorAll('[data-tool]').forEach(x => x.setAttribute('aria-pressed', x===b)); resetShape(); hint();
 });
-document.querySelectorAll('[data-cell]').forEach(b => b.onclick = () => {
-  D.cell = +b.dataset.cell; document.querySelectorAll('[data-cell]').forEach(x => x.setAttribute('aria-pressed', x===b));
-  budget(D.done ? D.pts : D.pts);
-});
+$('cellSize').oninput = e => { setCell(+e.target.value); budget(D.pts); };
 $('newArea').onclick = startDraw;
 $('drawCancel').onclick = () => { endDraw(); if(AREA) openArea(AREA.id); };
 $('drawGo').onclick = async () => {
   const choice = await confirmSize(D.pts);
   if(choice === 'back') return;
-  if(choice === 'ten'){ D.cell = 10; document.querySelectorAll('[data-cell]').forEach(x => x.setAttribute('aria-pressed', x.dataset.cell === '10')); budget(D.pts); }
+  if(choice === 'ten'){ setCell(coarser(D.cell)); budget(D.pts); }
   const body = {name: $('areaName').value || 'My area', poly: D.pts, H: D.cell};
   const shapeBounds = L.latLngBounds(D.pts);
   endDraw();

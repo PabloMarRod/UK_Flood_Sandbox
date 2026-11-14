@@ -89,7 +89,7 @@ levels. Get a free key at https://api-portal.naturalresources.wales/, copy `sett
 
 ## How it works, briefly
 
-The surface is a regular grid of 5 or 10 m cells split into triangles, solved by the OpenSWMM 6 two-dimensional
+The surface is a regular grid of 1 to 10 m cells split into triangles, solved by the OpenSWMM 6 two-dimensional
 engine. Estuaries are one-dimensional SWMM models from the tidal limit to a tide gauge, whose levels drive the
 area's river boundaries. Defences and drainage measures are built into each run's copy of the mesh, or added as
 linked one-dimensional elements (tanks, pumps, gates). Imported drainage networks and the insides of added

@@ -10,7 +10,7 @@ Flood scenarios for any place in England, Wales, Scotland and Northern Ireland: 
 2. Run `start_windows.bat` (Windows) or `./start_mac_linux.sh` (macOS/Linux). The first run finds a
    supported Python, creates a private environment in `.venv` and installs the packages. Later runs start straight away.
 3. Your browser opens http://localhost:8765. The Jesmond Vale preset and its 2012 replay load first.
-4. To model somewhere else, click **New area**, draw a rectangle or polygon, pick 5 m or 10 m cells and click
+4. To model somewhere else, click **New area**, draw a rectangle or polygon, set the cell size (1 to 10 m) and click
    **Prepare area**. The terrain and map data are downloaded (internet needed) and the mesh is built, which takes
    about half a minute per km². Then click **Design a scenario**.
 
@@ -179,7 +179,7 @@ the cells it crosses are lifted to the crest level, and where the defence runs a
 cells alongside are used so the wall has no gaps. Natural high ground is skipped (it is already in the terrain).
 Gates are assumed closed. Defences show as purple lines on the map with their crest level.
 
-Limits: walls become one to two cells wide (5 or 10 m) instead of their real width; only defences in the EA
+Limits: walls become one to two cells wide instead of their real width; only defences in the EA
 dataset are included (defences missing from it, or without a crest level, are not modelled); temporary barriers
 are not included. Wales has an equivalent NRW dataset, not yet connected. The Jesmond Vale preset keeps its
 original mesh (no defences).
@@ -414,8 +414,9 @@ There are no hard limits on area size or run time except a memory ceiling of 3 m
   own runs) and turns amber when an area is large (over 250k cells, or a 2-hour storm over 10 minutes).
 - Preparing a large area opens a window with the expected preparation time, run time per simulated hour and for a
   2-hour storm, a note that tidal rivers make runs several times slower, a note on 3D playback above 500k cells,
-  and the same figures with 10 m cells, with a one-click switch to them (a quarter of the cells and longer time
-  steps: typically 4 to 8 times faster, with streets and walls less sharply resolved).
+  and the same figures with cells twice as large (capped at 10 m), with a one-click switch to them (fewer cells and
+  longer time steps: several times faster, with streets and walls less sharply resolved). Cells of 1 or 2 m add a
+  note that runs are slow and mapped building outlines are rarely that accurate.
 - Running a scenario estimated over 10 minutes asks for confirmation; the scenario window also shows the estimate
   and suggestions to shorten it.
 This computer: the app reads the processor, number of cores, total and free memory and any NVIDIA graphics card
@@ -723,7 +724,7 @@ engine run.
 
 ## Model notes
 
-- Each area is a 5 or 10 m grid inside the drawn outline, each square split into two triangles; buildings
+- Each area is a grid of 1 to 10 m cells (whole metres) inside the drawn outline, each square split into two triangles; buildings
   (OpenStreetMap footprints covering at least half a square) are walls.
 - Drawn areas: an outline edge lets water out (normal-flow boundary) wherever the ground just outside is lower
   than the cell inside; elsewhere it is a wall. Runoff from outside the outline is not included.

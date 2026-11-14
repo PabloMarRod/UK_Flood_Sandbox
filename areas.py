@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent
 AREAS = ROOT / "areas"
 MAX_CELLS = 250_000          # comfortable size: above this the app warns (longer preparation and runs)
 HARD_CELLS = 3_000_000       # fallback memory ceiling when free memory cannot be read
+CELL_MIN, CELL_MAX = 1, 10   # cell size in whole metres (terrain and buildings are rasterised at 1 m)
 
 
 def ceiling_cells():
@@ -59,12 +60,22 @@ def listing():
     return sorted(out, key=lambda a: (a["kind"] != "preset", a.get("created") or 0))
 
 
+def cell_size(v):
+    """Cell size in metres as an int; raises ValueError unless a whole number from CELL_MIN to CELL_MAX."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        f = float("nan")
+    if not (f.is_integer() and CELL_MIN <= f <= CELL_MAX):
+        raise ValueError(f"cell size must be a whole number of metres from {CELL_MIN} to {CELL_MAX}")
+    return int(f)
+
+
 def new_area(name, poly_ll, H):
     """Create an area definition from a lat/lng outline; raises ValueError if too big."""
     from pyproj import Transformer
     from shapely.geometry import Polygon
-    if H not in (5, 10):
-        raise ValueError("cell size must be 5 or 10 m")
+    H = cell_size(H)
     if len(poly_ll) < 3:
         raise ValueError("draw at least three points")
     tf = Transformer.from_crs(4326, 27700, always_xy=True)
@@ -76,7 +87,7 @@ def new_area(name, poly_ll, H):
     cap = ceiling_cells()
     if est > cap:
         raise ValueError(f"the area would need about {est / 1e6:.1f} million cells, beyond what this computer's free memory can handle "
-                         f"(about {cap / 1e6:.1f} million); use 10 m cells or a smaller area, or close other programs")
+                         f"(about {cap / 1e6:.1f} million); use larger cells or a smaller area, or close other programs")
     x0, y0, x1, y1 = poly.bounds
     X0, Y1 = math.floor(x0 / H) * H, math.ceil(y1 / H) * H
     NX, NY = int(math.ceil((x1 - X0) / H)), int(math.ceil((Y1 - y0) / H))
@@ -336,7 +347,7 @@ def _defence_lines(A):
 
 # ------------------------------------------------------------------ mesh
 def build_mesh(A):
-    """Triangulated 5 or 10 m grid inside the outline; buildings are holes (walls)."""
+    """Triangulated grid (1 to 10 m cells) inside the outline; buildings are holes (walls)."""
     import rasterio
     from rasterio import features
     from rasterio.transform import from_origin
