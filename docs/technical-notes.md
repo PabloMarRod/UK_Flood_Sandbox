@@ -41,9 +41,11 @@ The server only listens on your own machine (127.0.0.1). Keep its window open wh
 
 ## Compute budget
 
-Run time grows with the number of cells times the simulated hours. While drawing, the app shows the area, the
-approximate cell count and seconds per simulated hour (green, amber, red). Limits: 250,000 cells per area and
-about 10 minutes per run. The speed figure starts from a development estimate and is recalibrated on your computer
+Run time grows with the number of cells times the simulated hours. Hours with rain (and the hour after it), a
+burst or a flood wave count fully; hours with only steady flows count 40%, as measured (tidal areas and the 2012
+river record count fully throughout). While drawing, the app shows the area, the approximate cell count and seconds
+per simulated hour (green, amber, red). Runs estimated over 10 minutes ask for confirmation, and runs estimated over
+60 minutes are refused with suggestions to shorten them. The speed figure starts from a development estimate and is recalibrated on your computer
 after every run (`runs/calibration.json`).
 
 ## Tidal estuaries
@@ -325,7 +327,9 @@ so tie lines into higher ground or other defences.
 
 - Hazard to people: the Defra/EA method (FD2320): hazard rating = depth x (speed + 0.5) + debris factor (1 where
   deeper than 0.25 m), worked out at every saved frame from that frame's depth and speed (the engine's vx, vy) and
-  the highest value kept, for cells at least 0.1 m deep. Classes: low under 0.75, moderate 0.75 to 1.25,
+  the highest value kept, for cells at least 0.1 m deep. Frames are saved every 5 minutes up to 4 hours, then every
+  10, 15 and 30 minutes up to 12, 24 and 72 hours (about 150 frames at most), so in long runs a short-lived peak of
+  hazard can fall between frames. Maximum depth and speed are tracked by the engine at every step and are exact. Classes: low under 0.75, moderate 0.75 to 1.25,
   significant 1.25 to 2.0, extreme above 2.0. "Hazard" layer in both views; areas per class in the results.
 - Roads impassable to cars: OpenStreetMap roads (not bridges or tunnels), sampled every 2.5 m, with water deeper
   than 0.3 m at some time (and over 0.1 m); the most affected roads are listed.
@@ -413,8 +417,9 @@ For the Jesmond Vale 2012 replay, the video goes in `runs/jesmond-vale-baseline/
 
 ## Area size and run time
 
-There are no hard limits on area size or run time except a memory ceiling of 3 million cells (about 75 km2 at
-10 m cells). Instead the app tells you what to expect:
+There are no hard limits on area size, and run time is limited only to runs estimated under 60 minutes on this
+computer, besides a memory ceiling of 3 million cells (about 75 km2 at 10 m cells). Otherwise the app tells you
+what to expect:
 - While drawing, the size line estimates the run time per simulated hour on this computer (calibrated from your
   own runs) and turns amber when an area is large (over 250k cells, or a 2-hour storm over 10 minutes).
 - Preparing a large area opens a window with the expected preparation time, run time per simulated hour and for a
@@ -422,8 +427,10 @@ There are no hard limits on area size or run time except a memory ceiling of 3 m
   and the same figures with cells twice as large (capped at 10 m), with a one-click switch to them (fewer cells and
   longer time steps: several times faster, with streets and walls less sharply resolved). Cells of 1 or 2 m add a
   note that runs are slow and mapped building outlines are rarely that accurate.
-- Running a scenario estimated over 10 minutes asks for confirmation; the scenario window also shows the estimate
-  and suggestions to shorten it.
+- Running a scenario estimated over 10 minutes asks for confirmation, and one estimated over 60 minutes is refused;
+  the scenario window shows the estimate and suggestions to shorten it (fewer hours, larger cells, a smaller area).
+- Simulations run up to 72 hours, with storms, flood waves and bursts up to that length. For rain lasting days,
+  simulating the part that matters with the ground set to saturated is much quicker than simulating it all.
 This computer: the app reads the processor, number of cores, total and free memory and any NVIDIA graphics card
 with ordinary user rights (Python's standard library and psutil; nothing is sent anywhere), shown under "About
 the model". On first start it runs a one-minute speed test in the background (a 30-minute storm on the Jesmond
@@ -745,8 +752,10 @@ engine run.
   flagged, not modelled. Flow values are yours to set: there is no gauge data for drawn areas.
 - Jesmond Vale preset: 900 x 1,190 m, 73,688 triangles, gauged river inflow and the Ouseburn culvert outlet.
 - Rain is uniform over the domain in 5-minute steps. The storm shape is even, an early, middle or late peak (a total
-  depth spread over the duration), or custom: one intensity per 5 minutes (0 to 300 mm/h, up to 6 hours), set by
-  dragging bars on a graph that starts from the last shape chosen, or pasted as a column of values. In a custom
+  depth spread over the duration), or custom: one intensity per step (0 to 300 mm/h, up to 72 hours), set by
+  dragging bars on a graph that starts from the last shape chosen, or pasted as a column of values. The graph uses
+  5-minute steps for patterns up to 6 hours, 15 minutes up to 18 hours and hourly beyond, so there are at most 72
+  bars to drag; pasted values can be every 5, 15 or 60 minutes. In a custom
   pattern the depth and duration follow from the values; typing a new depth scales the pattern, and changing the
   duration stretches it, keeping the depth. Climate uplift multiplies the whole storm, with presets from the
   Environment Agency peak rainfall allowances for the Tyne management catchment (version 21 March 2022).

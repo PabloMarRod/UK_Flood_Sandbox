@@ -56,7 +56,7 @@ try:
     put(state="running", progress=0)
     eng.run_with_callback(str(run / "model.inp"), str(run / "model.rpt"), str(run / "model.out"), cb)
     runtime = time.time() - t0
-    core.calibrate(core.effective_cells(A), q["sim"], runtime)
+    core.calibrate(core.effective_cells(A), core.effective_hours(q), runtime)
     try:                                           # peak memory of this run, to refine the memory ceiling
         try:
             import resource; peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024

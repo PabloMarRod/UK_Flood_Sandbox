@@ -14,19 +14,23 @@ ROOT = Path(__file__).parent
 DATA = ROOT / "data"
 STEP_MIN = 5                      # rainfall step (min)
 GAUGE_START = "2012-06-28T15:00"  # rain onset on Thunder Thursday (UTC)
-MAX_RUN_S = 600                   # refuse runs estimated above 10 minutes
+MAX_RUN_S = 600                   # warn about runs estimated above 10 minutes
+MAX_RUN_HARD_S = 3600             # refuse runs estimated above 60 minutes
+QUIET_W = 0.4                     # an hour with no storm, burst or flood wave costs about 40% of a storm hour (measured)
 CALIB = ROOT / "runs" / "calibration.json"
 DEFAULT_K = 4.5e-4                # seconds per cell per simulated hour (single core, measured in development)
 
-LIMITS = dict(depth=(0, 200), duration=(5, 360), sim=(0.5, 8.0), base_q=(0, 30), factor=(0.1, 3.0), uplift=(0, 100),
-              wave_base=(0, 30), wave_peak=(0, 80), wave_start=(0, 480), wave_rise=(5, 480), wave_fall=(5, 960),
-              burst_q=(0.01, 5), burst_start=(0, 480), burst_dur=(1, 480), blockage=(0, 95))
+LIMITS = dict(depth=(0, 400), duration=(5, 4320), sim=(0.5, 72.0), base_q=(0, 30), factor=(0.1, 3.0), uplift=(0, 100),
+              wave_base=(0, 30), wave_peak=(0, 80), wave_start=(0, 4320), wave_rise=(5, 2880), wave_fall=(5, 4320),
+              burst_q=(0.01, 5), burst_start=(0, 4320), burst_dur=(1, 4320), blockage=(0, 95))
+RAIN_STEPS = (5, 15, 60)           # minutes per value a custom pattern may use
 RIVER_LIMIT = 3000.0              # m3/s, per detected inflow in drawn areas (above the largest UK river floods)
-TIDE_LIMITS = dict(tide_hw=(-3, 12), tide_lw=(-8, 5), tide_hw_time=(0, 1440), surge_peak=(0, 3), surge_time=(0, 1440),
+TIDE_LIMITS = dict(tide_hw=(-3, 12), tide_lw=(-8, 5), tide_hw_time=(0, 1440), surge_peak=(0, 3), surge_time=(0, 4320),
                    surge_dur=(30, 2880), slr=(0, 2), river_base=(0, 5000), river_peak=(0, 8000))
 PROFILES = ("uniform", "front", "centre", "late", "custom")
-RAIN_MAX = 300.0                   # mm/h, the most a custom pattern may hold in one 5-minute step
+RAIN_MAX = 300.0                   # mm/h, the most a custom pattern may hold in one step
 INFLOWS = ("none", "base", "gauge2012", "wave")
+GAUGE_HOURS = 33                   # length of the 2012 Crag Hall record used by "gauge2012"
 SOILS = {  # Horton (max, min mm/h, decay 1/h) for green and garden/mixed cells; assumed values
     "dry": ((40, 5, 4), (15, 2, 4)), "normal": ((20, 3, 4), (8, 1, 4)), "wet": ((5, 2, 2), (2, 0.5, 2)), "sealed": None}
 # Ouseburn culvert (Tyne and Wear HER 5046): elliptical, 30 ft wide x 20 ft high
@@ -72,8 +76,25 @@ def record_memory(cells, peak_mb):
     CALIB.parent.mkdir(exist_ok=True); CALIB.write_text(json.dumps(cal, indent=1))
 
 
-def estimate_s(A, sim_h):
-    return 5 + k_per_cell() * effective_cells(A) * sim_h
+def effective_hours(q):
+    """Simulated hours weighted by cost: storm (and the hour after it), burst and flood-wave hours count fully,
+    hours with only steady flows count QUIET_W. Tidal areas are always active."""
+    if q.get("estuary") or q.get("inflow") == "gauge2012":
+        return q["sim"]
+    t = np.arange(int(round(q["sim"] * 60 / STEP_MIN))) * STEP_MIN
+    act = np.zeros(len(t), bool)
+    if q.get("depth", 0) > 0:
+        act |= t < q["duration"] + 60
+    if q.get("burst"):
+        act |= (t >= q["burst_start"]) & (t < q["burst_start"] + q["burst_dur"] + 60)
+    if q.get("inflow") == "wave" or any(r["mode"] == "wave" for r in q.get("rivers", [])):
+        act |= (t >= q["wave_start"]) & (t < q["wave_start"] + q["wave_rise"] + q["wave_fall"] + 60)
+    return float((act.sum() + QUIET_W * (~act).sum()) * STEP_MIN / 60)
+
+
+def estimate_s(A, hours):
+    """Seconds for a run of this many effective hours (see effective_hours)."""
+    return 5 + k_per_cell() * effective_cells(A) * hours
 
 
 # ------------------------------------------------------------------ storm
@@ -204,20 +225,28 @@ def validate(A, p):
                  wave_rise="Time to peak", wave_fall="Fall time", burst_q="Burst flow", burst_start="Burst start",
                  burst_dur="Burst duration", blockage="Blockage")
     if q["profile"] == "custom":                 # the pattern itself: mm/h in each 5-minute step; depth and duration follow
-        rain = p.get("rain")
+        rain, step = p.get("rain"), p.get("rain_step", STEP_MIN)
+        try:
+            step = int(step)
+        except (TypeError, ValueError):
+            step = 0
+        if step not in RAIN_STEPS:
+            raise ValueError(f"Custom rain must be given every {', '.join(map(str, RAIN_STEPS[:-1]))} or {RAIN_STEPS[-1]} minutes")
         if not isinstance(rain, list) or not rain:
             raise ValueError("Draw or paste the custom rain pattern")
         try:
             rain = [float(v) for v in rain]
         except (TypeError, ValueError):
             raise ValueError("Custom rain values must be numbers (mm/h)")
-        if len(rain) * STEP_MIN > LIMITS["duration"][1]:
-            raise ValueError(f"A custom pattern can be at most {LIMITS['duration'][1] // 60:g} hours ({LIMITS['duration'][1] // STEP_MIN} values)")
+        if len(rain) * step > LIMITS["duration"][1]:
+            raise ValueError(f"A custom pattern can be at most {LIMITS['duration'][1] // 60:g} hours "
+                             f"({LIMITS['duration'][1] // step} values every {step} minutes)")
         if not all(0 <= v <= RAIN_MAX for v in rain):
-            raise ValueError(f"Custom rain must be between 0 and {RAIN_MAX:g} mm/h in each 5 minutes")
+            raise ValueError(f"Custom rain must be between 0 and {RAIN_MAX:g} mm/h in each step")
         q["rain"] = [round(v, 1) for v in rain]
-        q["duration"] = len(rain) * STEP_MIN
-        q["depth"] = round(sum(q["rain"]) * STEP_MIN / 60, 1)
+        q["rain_step"] = step
+        q["duration"] = len(rain) * step
+        q["depth"] = round(sum(q["rain"]) * step / 60, 1)
     for k, (lo, hi) in LIMITS.items():
         if not lo <= q[k] <= hi:
             raise ValueError(f"{names[k]} must be between {lo:g} and {hi:g}")
@@ -257,6 +286,8 @@ def validate(A, p):
         warn.append("No rain, no burst and no flood wave: little will happen.")
     if q["depth"] > 0 and q["sim"] * 60 < q["duration"] + 60:
         warn.append("Less than an hour after the rain stops: water will still be draining at the end.")
+    if q["inflow"] == "gauge2012" and q["sim"] > GAUGE_HOURS:
+        warn.append(f"The 2012 river record covers {GAUGE_HOURS:g} hours; after that the flow is held at its last value.")
     meta = areas.mesh_meta(A)
     if meta.get("estuary"):
         import estuary as _est
@@ -284,10 +315,15 @@ def validate(A, p):
                 raise ValueError("The recorded period must be in the past")
             q["tide_start"] = t0.strftime("%Y-%m-%dT%H:%M")
         q["estuary"] = meta["estuary"]["id"]
-    est = estimate_s(A, q["sim"])
-    if est > MAX_RUN_S:                       # a warning, not a limit: the user decides whether to wait
-        warn.append(f"Long run: estimated about {est / 60:.0f} minutes on this computer. To shorten it, simulate fewer hours, "
-                    f"or draw the area again with 10 m cells (typically 4 to 8 times faster) or smaller.")
+    est = estimate_s(A, effective_hours(q))
+    shorter = ("simulate fewer hours (for a storm lasting days, the part that matters, with the ground set to saturated), "
+               "draw the area again with larger cells (doubling the cell size is typically 4 to 8 times faster), "
+               "or draw a smaller area")
+    if est > MAX_RUN_HARD_S:
+        raise ValueError(f"This run is estimated to take about {est / 60:.0f} minutes on this computer, over the "
+                         f"{MAX_RUN_HARD_S // 60} minute limit. To shorten it, {shorter}.")
+    if est > MAX_RUN_S:                       # a warning: the user decides whether to wait
+        warn.append(f"Long run: estimated about {est / 60:.0f} minutes on this computer. To shorten it, {shorter}.")
     q["est_s"] = round(est)
     q["measures"] = check_measures(A, p.get("measures")) if p.get("use_measures", True) else []
     try:
@@ -338,8 +374,9 @@ def burst_cell(A, lat, lng):
 
 def hyetograph(q):
     """Rain intensity (mm/h) per 5-min step over the storm."""
-    if q["profile"] == "custom":
-        return np.asarray(q["rain"], float) * (1 + q["uplift"] / 100)
+    if q["profile"] == "custom":                 # each value held for its step, as 5-minute values
+        rep_ = q.get("rain_step", STEP_MIN) // STEP_MIN
+        return np.repeat(np.asarray(q["rain"], float), rep_) * (1 + q["uplift"] / 100)
     n = q["duration"] // STEP_MIN
     edges = _cdf(q["profile"], np.linspace(0, 1, n + 1))
     return np.diff(edges) * q["depth"] * (1 + q["uplift"] / 100) * 60 / STEP_MIN
@@ -556,7 +593,7 @@ def write_inp(A, q, path, h5name, est=None):
         for k, nd, zb in zip(tz["tris"], tz["nodes"], tz["bed"]):   # start with the river at the tide level
             parts = lines[t0l + int(k)].split(); parts[4] = f"{max(0.0, h0[nd] - zb):.3f}"; lines[t0l + int(k)] = " ".join(parts)
     end = int(round(q["sim"] * 60))
-    rep = 5 if end <= 240 else 10
+    rep = 5 if end <= 240 else 10 if end <= 720 else 15 if end <= 1440 else 30   # about 150 frames at most
     o = [";; UNITS: SI (m)", ";; SOURCE_CRS: EPSG:27700", "[TITLE]", f"UK Flood Sandbox: {A['name']}", "",
          "[OPTIONS]", "FLOW_UNITS CMS", "INFILTRATION HORTON", "FLOW_ROUTING DYNWAVE", "LINK_OFFSETS ELEVATION"] + \
         (["ALLOW_PONDING YES"] if sw and sw.get("ponding") else []) + [      # open-channel nodes pond over their cell

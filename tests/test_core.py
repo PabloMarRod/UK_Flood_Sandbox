@@ -20,7 +20,7 @@ def test_valid_scenario(preset):
     assert q["depth"] == 30 and q["est_s"] > 0
 
 
-@pytest.mark.parametrize("bad", [dict(depth=-1), dict(depth=250), dict(sim=0.1), dict(sim=9)])
+@pytest.mark.parametrize("bad", [dict(depth=-1), dict(depth=450), dict(sim=0.1), dict(sim=73)])
 def test_out_of_range(preset, bad):
     with pytest.raises(ValueError):
         core.validate(preset, base(**bad))
@@ -75,7 +75,7 @@ def test_custom_rain_pattern(preset):
 
 @pytest.mark.parametrize("rain,msg", [(None, "Draw or paste"), ([], "Draw or paste"), (["a"], "numbers"),
                                       ([10, -1], "between 0 and"), ([10, 301], "between 0 and"),
-                                      ([1] * 73, "at most"), ([300] * 60, "Rain must be between")])
+                                      ([1] * 865, "at most"), ([300] * 60, "Rain must be between")])
 def test_custom_rain_pattern_checks(preset, rain, msg):
     with pytest.raises(ValueError, match=msg):
         core.validate(preset, base(profile="custom", rain=rain))
@@ -84,3 +84,40 @@ def test_custom_rain_pattern_checks(preset, rain, msg):
 def test_2012_pattern_no_longer_offered(preset):
     with pytest.raises(ValueError, match="unknown storm profile"):
         core.validate(preset, base(profile="obs2012"))
+
+
+def test_custom_rain_hourly_steps(preset):
+    q, _ = core.validate(preset, base(profile="custom", rain=[2, 6, 4], rain_step=60, sim=4))
+    assert q["duration"] == 180 and q["depth"] == 12.0
+    h = core.hyetograph(q)
+    assert len(h) == 36 and h[:12].tolist() == [2.0] * 12 and h[12:24].tolist() == [6.0] * 12
+
+
+def test_custom_rain_step_checked(preset):
+    with pytest.raises(ValueError, match="every 5, 15 or 60 minutes"):
+        core.validate(preset, base(profile="custom", rain=[2, 6], rain_step=10))
+
+
+def test_long_events_accepted(preset):
+    q, _ = core.validate(preset, base(depth=120, duration=2880, sim=60, inflow="none"))
+    assert q["sim"] == 60 and q["duration"] == 2880
+
+
+def test_quiet_hours_cost_less():
+    q = dict(sim=10.0, depth=30, duration=60, inflow="base", rivers=[])
+    assert core.effective_hours(q) == pytest.approx(2 + 8 * core.QUIET_W)        # storm hour, hour after, 8 quiet
+    q["burst"], q["burst_start"], q["burst_dur"] = True, 300, 60
+    assert core.effective_hours(q) == pytest.approx(4 + 6 * core.QUIET_W)        # plus the burst and the hour after it
+
+
+def test_runs_over_an_hour_refused(preset, monkeypatch):
+    monkeypatch.setattr(core, "k_per_cell", lambda: 1.0)
+    with pytest.raises(ValueError, match="over the 60 minute limit"):
+        core.validate(preset, base())
+
+
+def test_save_interval_scales_with_length(preset, tmp_path):
+    for sim, rep in ((2, 5), (8, 10), (24, 15), (72, 30)):
+        q, _ = core.validate(preset, base(sim=sim, inflow="none"))
+        core.write_inp(preset, q, tmp_path / "m.inp", "m.h5")
+        assert f"REPORT_STEP 00:{rep:02d}:00" in (tmp_path / "m.inp").read_text()

@@ -346,11 +346,14 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <div class="field">
         <span class="lbl">Rain</span>
         <div class="inline">
-          <input class="num" type="number" name="depth" min="0" max="200" step="1" value="30" aria-label="Total rain in millimetres"><span class="unit">mm in</span>
+          <input class="num" type="number" name="depth" min="0" max="400" step="1" value="30" aria-label="Total rain in millimetres"><span class="unit">mm in</span>
           <select class="num" name="duration" aria-label="Storm duration">
             <option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option>
             <option value="60" selected>1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option>
             <option value="180">3 hours</option><option value="240">4 hours</option><option value="360">6 hours</option>
+            <option value="540">9 hours</option><option value="720">12 hours</option><option value="1080">18 hours</option>
+            <option value="1440">24 hours</option><option value="2160">36 hours</option><option value="2880">48 hours</option>
+            <option value="4320">72 hours</option>
           </select>
         </div>
         <div class="hint">Set 0 mm for no rain. For scale: 28 June 2012 dropped about 50 mm on Newcastle in two hours.</div>
@@ -366,12 +369,14 @@ label.chk.big{font-size:14px;color:var(--ink)}
         </div>
         <div id="rainEditor" hidden>
           <svg id="rainEdit" role="img" aria-label="Custom rain pattern: drag the bars up or down"></svg>
-          <div class="hint">Drag a bar up or down to set the rain in those 5 minutes; drag across to shape several at once.
+          <div class="hint">Drag a bar up or down to set the rain in <span id="rainStepTxt">those 5 minutes</span>; drag across to shape several at once.
             <button type="button" class="linkbtn" id="rainPasteBtn">Paste values</button> ·
             <button type="button" class="linkbtn" id="rainReset">Start again</button></div>
           <div id="rainPasteBox" hidden>
-            <textarea id="rainPasteTxt" rows="4" placeholder="Rain in mm/h for each 5 minutes, one per line or separated by commas or spaces (a spreadsheet column pastes as it is)"></textarea>
-            <div class="inline"><button type="button" class="ghost sm" id="rainPasteGo">Use these values</button>
+            <textarea id="rainPasteTxt" rows="4" placeholder="Rain in mm/h, one value per step, one per line or separated by commas or spaces (a spreadsheet column pastes as it is)"></textarea>
+            <div class="inline"><label for="rainPasteStep">One value every</label>
+              <select class="num" id="rainPasteStep"><option value="5">5 min</option><option value="15">15 min</option><option value="60">hour</option></select>
+              <button type="button" class="ghost sm" id="rainPasteGo">Use these values</button>
               <button type="button" class="linkbtn" id="rainPasteCancel">Cancel</button></div>
             <div class="hint" id="rainPasteMsg"></div>
           </div>
@@ -412,9 +417,9 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <div class="field grid2" id="waveFields"><span class="lbl full" id="waveLbl" hidden>Flood wave timing (all flood waves)</span>
         <label data-preset>Base flow<span><input class="num" type="number" name="wave_base" min="0" max="30" step="0.1" value="0.5"> m³/s</span></label>
         <label data-preset>Peak flow<span><input class="num" type="number" name="wave_peak" min="0" max="80" step="0.5" value="15"> m³/s</span></label>
-        <label>Starts at<span><input class="num" type="number" name="wave_start" min="0" max="480" step="5" value="0"> min</span></label>
-        <label>Time to peak<span><input class="num" type="number" name="wave_rise" min="5" max="480" step="5" value="45"> min</span></label>
-        <label>Falls back over<span><input class="num" type="number" name="wave_fall" min="5" max="960" step="5" value="120"> min</span></label>
+        <label>Starts at<span><input class="num" type="number" name="wave_start" min="0" max="4320" step="5" value="0"> min</span></label>
+        <label>Time to peak<span><input class="num" type="number" name="wave_rise" min="5" max="2880" step="5" value="45"> min</span></label>
+        <label>Falls back over<span><input class="num" type="number" name="wave_fall" min="5" max="4320" step="5" value="120"> min</span></label>
       </div>
     </div>
 
@@ -429,8 +434,8 @@ label.chk.big{font-size:14px;color:var(--ink)}
         </div>
         <div class="grid2" id="burstFields">
           <label>Flow<span><input class="num" type="number" name="burst_q" min="0.01" max="5" step="0.05" value="0.3"> m³/s</span></label>
-          <label>Starts at<span><input class="num" type="number" name="burst_start" min="0" max="480" step="5" value="0"> min</span></label>
-          <label>Lasts<span><input class="num" type="number" name="burst_dur" min="1" max="480" step="5" value="60"> min</span></label>
+          <label>Starts at<span><input class="num" type="number" name="burst_start" min="0" max="4320" step="5" value="0"> min</span></label>
+          <label>Lasts<span><input class="num" type="number" name="burst_dur" min="1" max="4320" step="5" value="60"> min</span></label>
         </div>
         <div class="hint">A large trunk main burst can release several hundred litres per second (0.3 m³/s = 300 l/s) until it is isolated.</div>
       </div>
@@ -512,7 +517,7 @@ label.chk.big{font-size:14px;color:var(--ink)}
       <div class="field grid2">
         <span class="lbl full">Storm surge and sea level</span>
         <label>Surge peak<span><input class="num" type="number" name="surge_peak" min="0" max="3" step="0.1" value="0"> m</span></label>
-        <label>Surge peaks at<span><input class="num" type="number" name="surge_time" min="0" max="1440" step="5" value="120"> min</span></label>
+        <label>Surge peaks at<span><input class="num" type="number" name="surge_time" min="0" max="4320" step="5" value="120"> min</span></label>
         <label>Surge lasts<span><input class="num" type="number" name="surge_dur" min="30" max="2880" step="30" value="360"> min</span></label>
         <label>Sea level rise<span><input class="num" type="number" name="slr" min="0" max="2" step="0.05" value="0"> m</span></label>
       </div>
@@ -530,7 +535,8 @@ label.chk.big{font-size:14px;color:var(--ink)}
 
     <div class="field" style="margin-top:6px">
       <span class="lbl">Simulation length</span>
-      <div class="inline"><input class="num" type="number" name="sim" min="0.5" max="8" step="0.5" value="2" aria-label="Simulation length in hours"><span class="unit">hours</span></div>
+      <div class="inline"><input class="num" type="number" name="sim" min="0.5" max="72" step="0.5" value="2" aria-label="Simulation length in hours"><span class="unit">hours</span></div>
+      <div class="hint">Up to 72 hours. For rain lasting days, simulating the part that matters with the ground set to saturated is much quicker.</div>
     </div>
     <div class="preview">
       <svg id="hyeto" role="img" aria-label="Scenario preview"></svg>
@@ -741,7 +747,8 @@ label.chk.big{font-size:14px;color:var(--ink)}
 <script>
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
-const fmtMin = m => `${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,'0')}`;
+const fmtMin = m => { const d = Math.floor(m/1440), r = m - d*1440, s = `${Math.floor(r/60)}:${String(Math.round(r%60)).padStart(2,'0')}`;
+  return d ? `${d}d ${s.padStart(5,'0')}` : s; };
 const fmtVol = v => v >= 1e4 ? (v/1000).toFixed(0)+'k m³' : Math.round(v).toLocaleString()+' m³';
 const fmtS = s => s < 60 ? `${Math.max(1,Math.round(s))} s` : `${Math.round(s/60)} min`;
 const SHAPES = {uniform:'even rate', front:'early peak', centre:'middle peak', late:'late peak', custom:'custom pattern', obs2012:'2012 pattern'};
@@ -964,8 +971,9 @@ function drawSeries(svg, W, H, f, end, extra){
     el('text',{x:W-4, y:Math.max(yt(hi)-3, 22), 'text-anchor':'end', 'font-size':10.5, fill:'#2f7f7a'}).textContent = `${estRiver()} ${hi.toFixed(1)} mAOD`;
   }
   if(extra && extra.qout) el('path',{d:['M0,'+y(0)].concat(extra.minutes.map((t,k)=>'L'+x(t)+','+y(extra.qout[k]))).join(''), fill:'none', stroke:'#b07a2a', 'stroke-width':2, 'stroke-dasharray':'5 3'});
-  const step = end <= 120 ? 30 : end <= 300 ? 60 : 120;
-  for(let m=0; m<=end; m+=step) el('text',{x:Math.min(x(m)+2, W-26), y:H-1, 'font-size':10.5, fill:'#5d7179'}).textContent = fmtMin(m);
+  const step = [30, 60, 120, 240, 360, 720, 1440].find(s => end / s <= 6) || 1440;   // about 6 labels
+  for(let m=0; m<=end; m+=step){ const last = m + step > end;
+    el('text',{x: last ? W-2 : x(m)+2, y:H-1, 'text-anchor': last ? 'end' : 'start', 'font-size':10.5, fill:'#5d7179'}).textContent = fmtMin(m); }
   return {x, el};
 }
 function drawChart(){
@@ -1183,7 +1191,7 @@ let burstLL = null;
 function params(){
   const fd = new FormData(form), n = k => +fd.get(k);
   return {area: AREA.id, depth:n('depth'), duration:n('duration'), profile:fd.get('profile'), uplift:n('uplift'),
-          ...(fd.get('profile') === 'custom' && RAIN ? {rain: RAIN.map(v => +v.toFixed(1))} : {}),
+          ...(fd.get('profile') === 'custom' && RAIN ? {rain: RAIN.map(v => +v.toFixed(1)), rain_step: RSTEP} : {}),
           inflow:fd.get('inflow'), base_q:n('base_q'), factor:n('factor'),
           wave_base:n('wave_base'), wave_peak:n('wave_peak'), wave_start:n('wave_start'), wave_rise:n('wave_rise'), wave_fall:n('wave_fall'),
           burst:fd.get('burst')==='on', burst_lat:burstLL?burstLL.lat:null, burst_lng:burstLL?burstLL.lng:null,
@@ -1273,7 +1281,8 @@ async function check(){
     `<span>Estimated run time <b>about ${fmtS(q.est_s)}</b></span>`;
 }
 /* ---------------- custom rain pattern: one bar per 5 minutes, in mm/h ---------------- */
-const RSTEP = 5, RMAX = 300, RTOPS = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300];
+let RSTEP = 5; const RMAX = 300, RTOPS = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300];
+const autoStep = dur => dur <= 360 ? 5 : dur <= 1080 ? 15 : 60;   // at most 72 bars to drag
 let RAIN = null, rainTop = 0, lastShape = 'centre', rainDrag = null, rainHover = -1;
 function cdfJS(pf, x){
   x = Math.min(Math.max(x, 0), 1);
@@ -1284,11 +1293,11 @@ function cdfJS(pf, x){
 const shapeRain = (pf, depth, dur) => { const n = Math.max(1, Math.round(dur/RSTEP));
   return Array.from({length:n}, (_, i) => (cdfJS(pf, (i+1)/n) - cdfJS(pf, i/n)) * depth * 60/RSTEP); };
 const rainDepth = r => r.reduce((a, b) => a + b, 0) * RSTEP/60;
-function resampleRain(r, n){                 // stretch or squeeze the shape to n bars, keeping the total depth
+function resampleRain(r, from, to, n){       // stretch or squeeze the shape to n bars of `to` minutes, keeping the depth
   const tot = r.reduce((a, b) => a + b, 0); if(!tot) return Array(n).fill(0);
-  const cum = [0]; r.forEach(v => cum.push(cum[cum.length-1] + v/tot));
+  const mm = tot * from/60, cum = [0]; r.forEach(v => cum.push(cum[cum.length-1] + v/tot));
   const at = x => { const p = x*r.length, i = Math.min(Math.floor(p), r.length-1); return cum[i] + (cum[i+1]-cum[i])*(p-i); };
-  return Array.from({length:n}, (_, k) => Math.min(RMAX, (at((k+1)/n) - at(k/n)) * tot));
+  return Array.from({length:n}, (_, k) => Math.min(RMAX, (at((k+1)/n) - at(k/n)) * mm * 60/to));
 }
 function setDuration(min){                   // the duration list holds common lengths; a pasted pattern may need another
   const sel = form.duration;
@@ -1306,9 +1315,9 @@ function rainSync(){
   const on = new FormData(form).get('profile') === 'custom';
   $('rainEditor').hidden = !on;
   if(!on){ lastShape = new FormData(form).get('profile') || lastShape; $('rainReset').textContent = `Start again from the ${SHAPES[lastShape]}`; return; }
-  const dur = +form.duration.value, n = Math.round(dur/RSTEP);
-  if(!RAIN){ RAIN = shapeRain(lastShape, +form.depth.value || 30, dur); rainTop = 0; }
-  else if(RAIN.length !== n){ RAIN = resampleRain(RAIN, n); rainTop = 0; }
+  const dur = +form.duration.value;
+  if(!RAIN){ RSTEP = autoStep(dur); RAIN = shapeRain(lastShape, +form.depth.value || 30, dur); rainTop = 0; }
+  else if(RAIN.length * RSTEP !== dur){ const s = autoStep(dur); RAIN = resampleRain(RAIN, RSTEP, s, Math.round(dur/s)); RSTEP = s; rainTop = 0; }
   if(document.activeElement !== form.depth) form.depth.value = +rainDepth(RAIN).toFixed(1);   // not while it is being typed
   drawRainEdit();
 }
@@ -1320,6 +1329,7 @@ function drawRainEdit(){
   if(!RAIN || $('rainEditor').hidden) return;
   const g = rainGeom(), {svg, W, H, L, B, T, bw, ph} = g, NS = 'http://www.w3.org/2000/svg';
   if(!rainTop) rainTop = RTOPS.find(t => t >= Math.max(...RAIN, 1) * 1.15) || RMAX;
+  $('rainStepTxt').textContent = RSTEP === 60 ? 'that hour' : `those ${RSTEP} minutes`;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
   const el = (tag, a) => { const e = document.createElementNS(NS, tag); for(const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
   for(const f of [0, .5, 1]){
@@ -1328,17 +1338,17 @@ function drawRainEdit(){
     el('text', {x:L-5, y:y+4, 'text-anchor':'end', 'font-size':10, fill:'#5d7179'}).textContent = Math.round(rainTop*f);
   }
   el('text', {x:L-5, y:10, 'text-anchor':'end', 'font-size':10, fill:'#5d7179'}).textContent = 'mm/h';
-  const every = [15, 30, 60, 120].find(m => m/RSTEP*bw >= 34) || 120;
+  const every = [15, 30, 60, 120, 180, 360, 720, 1440].find(m => m/RSTEP*bw >= 34) || 1440;
   RAIN.forEach((v, i) => {
     const h = Math.min(v, rainTop) / rainTop * ph;
     el('rect', {x:L + i*bw + 0.5, y:T + ph - h, width:Math.max(bw - 1, 1), height:Math.max(h, 0), fill: i === rainHover ? '#185f9e' : '#8fb3c9'});
     const m = (i+1) * RSTEP;
-    if(m % every === 0) el('text', {x:L + (i+1)*bw, y:H-6, 'text-anchor': i === RAIN.length - 1 ? 'end' : 'middle', 'font-size':10, fill:'#5d7179'}).textContent = m % 60 ? `${m}m` : `${m/60}h`;
+    if(m % every === 0) el('text', {x:L + (i+1)*bw, y:H-6, 'text-anchor': i === RAIN.length - 1 ? 'end' : 'middle', 'font-size':10, fill:'#5d7179'}).textContent = m % 60 ? `${m}m` : m % 1440 ? `${m/60}h` : `${m/1440}d`;
   });
   if(rainHover >= 0){
     const v = RAIN[rainHover], x = Math.min(Math.max(L + (rainHover + .5)*bw, L + 60), W - 60);
     el('text', {x, y:11, 'text-anchor':'middle', 'font-size':11, fill:'#16303a'}).textContent =
-      `${rainHover*RSTEP}–${(rainHover+1)*RSTEP} min: ${v.toFixed(0)} mm/h`;
+      `${fmtMin(rainHover*RSTEP)}–${fmtMin((rainHover+1)*RSTEP)}: ${v.toFixed(0)} mm/h`;
   }
 }
 function rainAt(ev){
@@ -1372,17 +1382,17 @@ form.depth.addEventListener('input', () => {   // a typed total scales the drawn
   RAIN = tot > 0 ? RAIN.map(v => Math.min(RMAX, v * want / tot)) : shapeRain('uniform', want, RAIN.length * RSTEP);
   rainTop = 0;
 });
-$('rainReset').onclick = () => { RAIN = shapeRain(lastShape, +form.depth.value || 30, +form.duration.value); rainTop = 0; rainChanged(); };
-$('rainPasteBtn').onclick = () => { $('rainPasteBox').hidden = false; $('rainPasteMsg').textContent = ''; $('rainPasteTxt').focus(); };
+$('rainReset').onclick = () => { RSTEP = autoStep(+form.duration.value); RAIN = shapeRain(lastShape, +form.depth.value || 30, +form.duration.value); rainTop = 0; rainChanged(); };
+$('rainPasteBtn').onclick = () => { $('rainPasteStep').value = String(RSTEP); $('rainPasteBox').hidden = false; $('rainPasteMsg').textContent = ''; $('rainPasteTxt').focus(); };
 $('rainPasteCancel').onclick = () => { $('rainPasteBox').hidden = true; };
 $('rainPasteGo').onclick = () => {
   const vals = $('rainPasteTxt').value.trim().split(/[\s,;]+/).filter(Boolean).map(Number);
-  const maxN = 360 / RSTEP;
+  const step = +$('rainPasteStep').value, maxN = 4320 / step;
   const bad = !vals.length ? 'Paste at least one value.'
     : vals.some(v => !Number.isFinite(v) || v < 0 || v > RMAX) ? `Each value must be a number of mm/h from 0 to ${RMAX}.`
-    : vals.length > maxN ? `At most ${maxN} values (6 hours of 5-minute steps); you pasted ${vals.length}.` : '';
+    : vals.length > maxN ? `At most ${maxN} values (72 hours of ${step}-minute steps); you pasted ${vals.length}.` : '';
   if(bad){ $('rainPasteMsg').textContent = bad; return; }
-  RAIN = vals; rainTop = 0; setDuration(vals.length * RSTEP);
+  RAIN = vals; RSTEP = step; rainTop = 0; setDuration(vals.length * RSTEP);
   $('rainPasteBox').hidden = true; $('rainPasteTxt').value = '';
   rainChanged();
 };
