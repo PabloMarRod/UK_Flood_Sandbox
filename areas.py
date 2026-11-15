@@ -485,8 +485,10 @@ def build_mesh(A):
     TSQ = np.array(TSQ, int).reshape(-1, 2)
     if len(T) == 0:
         raise ValueError("no usable ground in this area (missing terrain data?)")
-    if len(T) > MAX_CELLS:
-        raise ValueError(f"the area has {len(T):,} cells; the limit is {MAX_CELLS:,}")
+    cap = ceiling_cells()                  # MAX_CELLS only triggers warnings; memory is the real limit
+    if len(T) > cap:
+        raise ValueError(f"the area has {len(T):,} cells, more than this computer's memory allows ({cap:,}); "
+                         f"draw a smaller area or use larger cells")
     # first triangle index of each kept square
     first = -np.ones((NY, NX), int); first[TSQ[::2, 0], TSQ[::2, 1]] = np.arange(0, len(T), 2)
 
