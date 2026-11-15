@@ -143,3 +143,15 @@ def test_basin_has_a_level_floor_on_a_slope():
     assert floor.max() - floor.min() < 1e-9                                      # level
     edge_low = ground[(np.abs(vxy[:, 0] - 50) <= H * 1.2) & (vxy[:, 0] <= 50)].min()
     assert floor[0] == pytest.approx(edge_low - 1.5)                             # depth below the lowest edge
+
+
+def test_gate_closes_at_depth_over_upstream_ground(preset, tmp_path):
+    """A level-operated gate closes when the water is close_level deep over the ground on its side A,
+    not when the junction (whose base sits below the lower side) reaches close_level + 0.3."""
+    import re
+    xc, yc = preset["X0"] + preset["NX"] * preset["H"] / 2, preset["Y1"] - preset["NY"] * preset["H"] / 2
+    g = dict(type="gate", pts=[[xc - 15, yc], [xc + 15, yc]], height=1.5, mode="level", close_level=0.4)
+    q, _ = core.validate(preset, base(measures=[g], use_measures=True, inflow="none"))
+    core.write_inp(preset, q, tmp_path / "m.inp", "m.h5"); t = (tmp_path / "m.inp").read_text()
+    node, thr = re.search(r"IF NODE (\S+) DEPTH > ([\d.]+)", t).groups()
+    assert float(thr) >= 0.4 + 0.3 - 1e-6                     # at least the old offset, plus any rise to side A's ground

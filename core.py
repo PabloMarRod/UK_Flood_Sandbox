@@ -807,17 +807,17 @@ def _structures(A, q, lines, cache):
                 link(f"g{n}a{len(pairs)}", *ca, ga, opening); link(f"g{n}b{len(pairs)}", *cb, gb, opening)
                 out["orifices"].append(f"{gid} {ga} {gb} SIDE {base:.3f} 0.65 NO")
                 out["xsections"].append(f"{gid} RECT_CLOSED {m['height'] + 0.3:.2f} {H:.2f} 0 0")
-                pairs.append((gid, ga))
+                pairs.append((gid, ga, za - base))           # junction depth when water just covers the upstream ground
             if not pairs: continue
             if m["mode"] == "closed":
-                rules.append(f"RULE R{n}\nIF SIMULATION TIME >= 0\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, _ in pairs))
+                rules.append(f"RULE R{n}\nIF SIMULATION TIME >= 0\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs))
             elif m["mode"] == "time":
                 hrs = m["close_min"] / 60
-                rules.append(f"RULE R{n}\nIF SIMULATION TIME >= {hrs:.3f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, _ in pairs)
-                             + "\nELSE " + "\nAND ".join(f"ORIFICE {g} SETTING = 1" for g, _ in pairs))
+                rules.append(f"RULE R{n}\nIF SIMULATION TIME >= {hrs:.3f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs)
+                             + "\nELSE " + "\nAND ".join(f"ORIFICE {g} SETTING = 1" for g, *_ in pairs))
             elif m["mode"] == "level":
-                g0, a0 = pairs[0]
-                rules.append(f"RULE R{n}\nIF NODE {a0} DEPTH > {m['close_level'] + 0.3:.2f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, _ in pairs))
+                g0, a0, off = pairs[0]                   # close once the water is close_level deep over the upstream ground
+                rules.append(f"RULE R{n}\nIF NODE {a0} DEPTH > {m['close_level'] + off:.2f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs))
     out["controls"] = rules
     for k, parts in enumerate(tri): lines[t0 + k] = " ".join(parts)
     return out
