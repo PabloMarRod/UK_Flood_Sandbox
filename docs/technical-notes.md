@@ -750,6 +750,8 @@ engine run.
   closed), and a crossing out of it is always an open edge. Each inflow can be off, steady, or a flood wave (base
   and peak per watercourse, shared timing). Canals and culverted sections are skipped; the River Tyne is tidal and is
   flagged, not modelled. Flow values are yours to set: there is no gauge data for drawn areas.
+  A river can also take a recorded hydrograph (mode "recorded": m³/s every 5, 15 or 60 minutes, interpolated and
+  held at the last value), for now through scenario parameters in scripts rather than the scenario window.
 - Jesmond Vale preset: 900 x 1,190 m, 73,688 triangles, gauged river inflow and the Ouseburn culvert outlet.
 - Rain is uniform over the domain in 5-minute steps. The storm shape is even, an early, middle or late peak (a total
   depth spread over the duration), or custom: one intensity per step (0 to 300 mm/h, up to 72 hours), set by

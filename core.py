@@ -87,6 +87,8 @@ def effective_hours(q):
         act |= t < q["duration"] + 60
     if q.get("burst"):
         act |= (t >= q["burst_start"]) & (t < q["burst_start"] + q["burst_dur"] + 60)
+    if any(r["mode"] == "recorded" for r in q.get("rivers", [])):
+        return q["sim"]                          # a measured hydrograph changes throughout
     if q.get("inflow") == "wave" or any(r["mode"] == "wave" for r in q.get("rivers", [])):
         act |= (t >= q["wave_start"]) & (t < q["wave_start"] + q["wave_rise"] + q["wave_fall"] + 60)
     return float((act.sum() + QUIET_W * (~act).sum()) * STEP_MIN / 60)
@@ -258,7 +260,20 @@ def validate(A, p):
     known = {f["id"]: f for f in areas.mesh_meta(A).get("inflows", [])}
     for r in (p.get("rivers") or []):
         rid, mode = r.get("id"), r.get("mode", "none")
-        if rid not in known or mode not in ("none", "base", "wave"):
+        if rid not in known or mode not in ("none", "base", "wave", "recorded"):
+            continue
+        if mode == "recorded":                  # a measured hydrograph: m3/s every 5, 15 or 60 minutes from the start
+            nm, vals, step = known[rid]["name"], r.get("values"), r.get("step", 15)
+            try:
+                vals, step = [float(v) for v in vals], int(step)
+            except (TypeError, ValueError):
+                raise ValueError(f"{nm}: recorded flows must be a list of numbers (m³/s)")
+            if step not in RAIN_STEPS or not vals or (len(vals) - 1) * step > LIMITS["sim"][1] * 60:
+                raise ValueError(f"{nm}: recorded flows must be given every 5, 15 or 60 minutes, for up to 72 hours")
+            if not all(0 <= v <= RIVER_LIMIT for v in vals):
+                raise ValueError(f"{nm}: flows must be between 0 and {RIVER_LIMIT:g} m³/s")
+            q["rivers"].append(dict(id=rid, name=nm, mode="recorded", values=[round(v, 3) for v in vals], step=step,
+                                    base=min(vals), peak=max(vals)))
             continue
         base, peak = float(r.get("base", 0)), float(r.get("peak", 0))
         nm = known[rid]["name"]
@@ -281,7 +296,7 @@ def validate(A, p):
         q["burst_cell"] = burst_cell(A, q["burst_lat"], q["burst_lng"])
         if q["burst_start"] >= q["sim"] * 60: raise ValueError("The burst starts after the simulation ends")
         if q["burst_start"] + q["burst_dur"] > q["sim"] * 60: warn.append("The burst is still running when the simulation ends.")
-    if q["depth"] == 0 and not q["burst"] and q["inflow"] in ("none", "base") and not any(r["mode"] == "wave" for r in q["rivers"]) \
+    if q["depth"] == 0 and not q["burst"] and q["inflow"] in ("none", "base") and not any(r["mode"] in ("wave", "recorded") for r in q["rivers"]) \
             and not areas.mesh_meta(A).get("estuary"):
         warn.append("No rain, no burst and no flood wave: little will happen.")
     if q["depth"] > 0 and q["sim"] * 60 < q["duration"] + 60:
@@ -413,6 +428,8 @@ def river_series(q, r):
     t = np.arange(n) * STEP_MIN
     if r["mode"] == "base":
         return t, np.full(n, r["base"])
+    if r["mode"] == "recorded":                  # interpolated to 5 minutes; held at the last value if the record ends early
+        return t, np.interp(t, np.arange(len(r["values"])) * r["step"], r["values"])
     return t, r["base"] + (r["peak"] - r["base"]) * wave_shape(q, t)
 
 

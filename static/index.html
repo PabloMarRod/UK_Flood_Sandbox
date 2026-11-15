@@ -762,7 +762,8 @@ function describe(p){
              : p.inflow==='gauge2012' ? `2012 river record ×${p.factor}` : `flood wave peaking at ${p.wave_peak} m³/s`);
   (p.rivers||[]).filter(r => r.mode!=='none').forEach(r => {
     const nm = (S && (S.inflows||[]).find(f => f.id===r.id) || {}).name || r.name || 'river';
-    parts.push(r.mode==='base' ? `${nm} steady at ${r.base} m³/s` : `${nm} flood wave to ${r.peak} m³/s`);
+    parts.push(r.mode==='base' ? `${nm} steady at ${r.base} m³/s` : r.mode==='recorded' ? `${nm} recorded flows, peak ${r.peak} m³/s`
+               : `${nm} flood wave to ${r.peak} m³/s`);
   });
   if(p.tide_mode){
     let t = p.tide_mode==='recorded' ? `recorded tide and flows from ${String(p.tide_start).replace('T',' ')} UTC`

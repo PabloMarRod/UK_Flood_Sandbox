@@ -121,3 +121,12 @@ def test_save_interval_scales_with_length(preset, tmp_path):
         q, _ = core.validate(preset, base(sim=sim, inflow="none"))
         core.write_inp(preset, q, tmp_path / "m.inp", "m.h5")
         assert f"REPORT_STEP 00:{rep:02d}:00" in (tmp_path / "m.inp").read_text()
+
+
+def test_recorded_river_flows():
+    q = dict(sim=2.0, rivers=[])
+    r = dict(mode="recorded", values=[1.0, 4.0, 2.0], step=15, base=1.0, peak=4.0)
+    t, v = core.river_series(q, r)
+    assert v[0] == 1.0 and v[3] == 4.0 and v[6] == 2.0 and v[-1] == 2.0          # every 15 min, held after the record ends
+    assert v[1] == pytest.approx(2.0) and v[4] == pytest.approx(10 / 3)               # interpolated in between
+    assert core.effective_hours(dict(q, rivers=[r], depth=0, duration=60)) == 2.0
