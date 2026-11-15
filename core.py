@@ -169,8 +169,9 @@ def check_measures(A, ms):
 def apply_measures(A, vxy, vz, measures, is_tidal_vertex=None, chan_vertex=None):
     """Raise or lower mesh vertex heights for user defences (vz edited in place and returned).
     Walls and barriers: vertices within 0.75 cell of the line raised to ground + height. Embankments: a crest of
-    the given width at ground + height with 1-in-3 side slopes. Basins: ground lowered by the depth inside the
-    outline, with an optional bund just outside it. River (estuary) vertices are never changed."""
+    the given width at ground + height with 1-in-3 side slopes. Basins: a level floor `depth` below the lowest
+    ground on the outline's edge, so the basin holds its area times its depth on any slope, with an optional bund
+    just outside it. River (estuary) vertices are never changed."""
     import shapely
     from shapely.geometry import Polygon, LineString
     H = A["H"]
@@ -192,9 +193,12 @@ def apply_measures(A, vxy, vz, measures, is_tidal_vertex=None, chan_vertex=None)
             continue
         if m["type"] == "basin":
             g = Polygon(m["pts"]); inside = shapely.contains(g, pts)
-            vz[inside] = np.minimum(vz[inside], ground[inside] - m["depth"])
+            if not inside.any():
+                continue
+            d = shapely.distance(g.exterior, pts); ring = (~inside) & (d <= H * 1.2)
+            spill = ground[ring].min() if ring.any() else ground[inside].min()      # where water would first spill out
+            vz[inside] = np.minimum(vz[inside], spill - m["depth"])                 # level floor: holds area x depth
             if m.get("bund", 0) > 0:
-                d = shapely.distance(g.exterior, pts); ring = (~inside) & (d <= H * 1.2)
                 vz[ring] = np.maximum(vz[ring], ground[ring] + m["bund"])
             continue
         g = LineString(m["pts"]); d = shapely.distance(g, pts)

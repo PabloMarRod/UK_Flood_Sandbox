@@ -130,3 +130,16 @@ def test_recorded_river_flows():
     assert v[0] == 1.0 and v[3] == 4.0 and v[6] == 2.0 and v[-1] == 2.0          # every 15 min, held after the record ends
     assert v[1] == pytest.approx(2.0) and v[4] == pytest.approx(10 / 3)               # interpolated in between
     assert core.effective_hours(dict(q, rivers=[r], depth=0, duration=60)) == 2.0
+
+
+def test_basin_has_a_level_floor_on_a_slope():
+    """A basin on sloping ground holds its area times its depth: its floor is level, below the lowest edge."""
+    H = 5.0
+    xs, ys = np.meshgrid(np.arange(0, 200, H), np.arange(0, 100, H))
+    vxy = np.c_[xs.ravel(), ys.ravel()]; ground = 50 + 0.02 * vxy[:, 0]          # 2% slope rising east
+    vz = core.apply_measures({"H": H}, vxy, ground.copy(), [dict(type="basin", pts=[[50, 20], [150, 20], [150, 80], [50, 80]], depth=1.5, bund=0)])
+    inside = (vxy[:, 0] > 50) & (vxy[:, 0] < 150) & (vxy[:, 1] > 20) & (vxy[:, 1] < 80)
+    floor = vz[inside]
+    assert floor.max() - floor.min() < 1e-9                                      # level
+    edge_low = ground[(np.abs(vxy[:, 0] - 50) <= H * 1.2) & (vxy[:, 0] <= 50)].min()
+    assert floor[0] == pytest.approx(edge_low - 1.5)                             # depth below the lowest edge

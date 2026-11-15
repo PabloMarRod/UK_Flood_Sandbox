@@ -293,7 +293,7 @@ double-click or press Enter (Backspace undoes a point, Esc cancels). Set the siz
 | Flood wall | a line; height above ground | mesh points within 0.75 cell of the line raised to ground + height |
 | Demountable barrier | a line; height | the same as a wall (for testing deployed or not) |
 | Embankment | a line; height and crest width | a crest of that width at ground + height, with 1-in-3 side slopes |
-| Storage basin | an area; depth, optional bund | ground lowered by the depth inside, a bund just outside |
+| Storage basin | an area; depth, optional bund | a level floor the depth below the lowest ground on its edge, so it holds its area times its depth even on a slope; a bund just outside |
 | Raised kerb | a line; height (0.05 to 0.5 m) | like a low wall, steering shallow water |
 | Channel deepening | an area over a river; extra depth | river cells inside lowered (tidal rivers are never changed) |
 | Permeable surface | an area | ground and paving soak up to 150 mm/h, falling to 40 (Horton), Manning n 0.015 |
