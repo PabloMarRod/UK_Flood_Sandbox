@@ -352,7 +352,7 @@ def build_mesh(A):
     from rasterio import features
     from rasterio.transform import from_origin
     from scipy import ndimage
-    from shapely.geometry import Polygon, LineString
+    from shapely.geometry import Polygon, LineString, Point
     from shapely.ops import unary_union
     from pyproj import Transformer
 
@@ -371,6 +371,7 @@ def build_mesh(A):
 
     tf = Transformer.from_crs(4326, 27700, always_xy=True).transform
     bld, roads, green, wood, parking, river, culverts = [], [], [], [], [], [], 0
+    culvert_list = []                       # culverted watercourses: kept so the model can route them as pipes
     bld_tags = []
     river_info = []
     water_polys = []
@@ -390,11 +391,16 @@ def build_mesh(A):
         elif tg.get("highway") in ROADW: roads.append(LineString(pts).buffer(ROADW[tg["highway"]] / 2))
         elif F.get("legacy_rivers") and tg.get("waterway") == "river":
             river.append(LineString(pts))      # preset: mapped river lines as originally built
-        elif not F.get("legacy_rivers") and tg.get("waterway") in ("river", "stream", "canal"):
-            if tg.get("tunnel") in ("culvert", "yes") or tg.get("culvert"): culverts += 1
-            else:
-                river.append(LineString(pts))
-                river_info.append((LineString(pts), tg.get("name") or ("Unnamed " + tg["waterway"]), tg["waterway"]))
+        elif not F.get("legacy_rivers") and tg.get("waterway") in ("river", "stream", "canal", "ditch", "drain") and \
+                (tg.get("tunnel") in ("culvert", "yes") or tg.get("culvert")):
+            culverts += 1
+            if tg["waterway"] != "canal" and len(pts) > 1:      # OSM draws waterways in the direction of flow
+                culvert_list.append(dict(id=f"w{e.get('id')}", name=tg.get("name") or ("Unnamed " + tg["waterway"]), waterway=tg["waterway"],
+                                         pts=[[round(x, 1), round(y, 1)] for x, y in pts],
+                                         tags={k: tg[k] for k in ("diameter", "width", "height", "culvert", "tunnel") if k in tg}))
+        elif not F.get("legacy_rivers") and tg.get("waterway") in ("river", "stream", "canal"):      # open channels
+            river.append(LineString(pts))
+            river_info.append((LineString(pts), tg.get("name") or ("Unnamed " + tg["waterway"]), tg["waterway"]))
         elif closed and (tg.get("natural") == "water" or tg.get("waterway") == "riverbank"): water_polys.append(Polygon(pts).buffer(0))
         elif closed and tg.get("natural") in ("wood", "scrub"): wood.append(Polygon(pts).buffer(0))
         elif closed and (tg.get("landuse") in GREENS or tg.get("leisure") in GREENS): green.append(Polygon(pts).buffer(0))
@@ -492,7 +498,9 @@ def build_mesh(A):
     # first triangle index of each kept square
     first = -np.ones((NY, NX), int); first[TSQ[::2, 0], TSQ[::2, 1]] = np.arange(0, len(T), 2)
 
-    meta = dict(n_cells=len(T), area_m2=len(T) * H * H / 2, culverts=culverts, rivers=len(river), bc=[], outflow=[],
+    inside_poly = Polygon(A["poly_bng"])
+    culvert_list = [c for c in culvert_list if inside_poly.contains(Point(c["pts"][0])) and inside_poly.contains(Point(c["pts"][-1]))]
+    meta = dict(n_cells=len(T), area_m2=len(T) * H * H / 2, culverts=culverts, culvert_list=culvert_list, rivers=len(river), bc=[], outflow=[],
                 defences=n_def, terrain_filled_pct=round(100 * filled_frac, 1))
     lines_extra = []
     if F.get("river_inflow"):   # preset: gauged inflow where the river crosses the north edge, culvert on the south edge
@@ -764,7 +772,7 @@ def static_layers(A):
     ll = lambda x, y: list(tf.transform(x, y))[::-1]
     meta = mesh_meta(A)
     res = dict(shade=_png(rg), shadeBounds=[[b[1], b[0]], [b[3], b[2]]],
-               outline=[ll(x, y) for x, y in A["poly_bng"]], cells=meta["n_cells"], culverts=meta.get("culverts", 0),
+               outline=[ll(x, y) for x, y in A["poly_bng"]], cells=meta["n_cells"], culverts=meta.get("culverts", 0), culverts_routed=len(meta.get("culvert_list", [])),
                rivers=meta.get("rivers", 0), outflow_edges=len(meta.get("outflow", [])))
     if "ent" in meta:
         res.update(entry=ll(*meta["ent"]), exit=ll(*meta["ext"]))

@@ -84,6 +84,21 @@ def busy_message(kind):
         kind, "Wait for the running job to finish.")
 
 
+def culvert_rows(A):
+    """The area's culverts with the size each run will use and where that size comes from."""
+    from shapely.geometry import LineString
+    from pyproj import Transformer
+    inv = Transformer.from_crs(27700, 4326, always_xy=True)
+    rows = []
+    for c in areas.mesh_meta(A).get("culvert_list", []):
+        shp, w, h, src = core.culvert_size(c, A.get("culverts_user"))
+        mid = LineString(c["pts"]).interpolate(0.5, normalized=True); lon, lat = inv.transform(mid.x, mid.y)
+        rows.append(dict(id=c["id"], name=c["name"], waterway=c["waterway"], length=round(LineString(c["pts"]).length),
+                         shape=shp, width=round(w, 2), height=round(h, 2), source=src, at=[round(lat, 6), round(lon, 6)]))
+    return rows
+
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -331,6 +346,12 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/areas":
             return self._send(200, {"areas": areas.listing(), "k": core.k_per_cell(), "max_cells": areas.MAX_CELLS, "hard_cells": areas.ceiling_cells(),
                                     "max_run_s": core.MAX_RUN_S})
+        if p.startswith("/api/culverts/"):            # the area's culverts and their sizes
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+            except ValueError as e:
+                return self._send(404, {"error": str(e)})
+            return self._send(200, {"culverts": culvert_rows(A), "mapped": areas.mesh_meta(A).get("culverts", 0)})
         if p.startswith("/api/area/"):
             try:
                 A = areas.load(p.rsplit("/", 1)[1])
@@ -485,6 +506,28 @@ class Handler(BaseHTTPRequestHandler):
                 if busy(): return self._send(409, {"error": "Another job is running.", "busy": True})
                 start_bench()
             return self._send(200, {"ok": True})
+        if p.startswith("/api/culverts/"):            # save or reset the size you know for one culvert
+            try:
+                A = areas.load(p.rsplit("/", 1)[1])
+            except ValueError as e:
+                return self._send(404, {"error": str(e)})
+            cid = str(body.get("id", ""))
+            if cid not in {c["id"] for c in areas.mesh_meta(A).get("culvert_list", [])}:
+                return self._send(400, {"error": "unknown culvert"})
+            user = dict(A.get("culverts_user") or {})
+            if body.get("reset"):
+                user.pop(cid, None)
+            else:
+                try:
+                    shp = body.get("shape") if body.get("shape") in ("circular", "box") else "circular"
+                    w = float(body["width"]); h = float(body.get("height") or w)
+                except (KeyError, TypeError, ValueError):
+                    return self._send(400, {"error": "give the culvert's width (and height for a box) in metres"})
+                if not (0.1 <= w <= 20 and 0.1 <= h <= 20):
+                    return self._send(400, {"error": "culvert sizes must be between 0.1 and 20 m"})
+                user[cid] = dict(shape=shp, width=w, height=h if shp == "box" else w)
+            A["culverts_user"] = user; areas.save(A)
+            return self._send(200, {"culverts": culvert_rows(A)})
         if p.startswith("/api/export/"):           # /api/export/<run>/gis  or  /api/export/<run>/report
             import export
             parts = p.split("/"); rid, kind = parts[3], parts[4]

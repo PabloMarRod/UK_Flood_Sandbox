@@ -160,6 +160,12 @@ label.chk.big{font-size:14px;color:var(--ink)}
 .seg.mini{margin:0}
 .seg.mini button{padding:6px 10px;flex:none}
 .cellpick{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.culvlist{max-height:260px;overflow:auto;margin-top:6px}
+.culv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.culv .src{color:var(--muted);font-size:12px}
+.culv .src.est{color:var(--warn)}
+.culv form{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+.culv form .num{width:70px}
 .cellpick input[type=range]{width:120px}
 .cellpick output{min-width:3em;font-variant-numeric:tabular-nums}
 .epsgpick{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
@@ -585,6 +591,11 @@ label.chk.big{font-size:14px;color:var(--ink)}
         <button type="button" class="linkbtn" id="sewerRemove2" hidden>Remove</button>
       </div>
     </section>
+    <section class="dsec" aria-labelledby="dsecCulv">
+      <h3 id="dsecCulv">Culverts</h3>
+      <div class="dstatus" id="culvInfo">No culverts found in this area.</div>
+      <div id="culvList" class="culvlist"></div>
+    </section>
     <section class="dsec" aria-labelledby="dsecBld">
       <h3 id="dsecBld"><span>Added buildings</span><button type="button" class="ghost sm" id="ifcBtn">Add building (IFC or scan)</button></h3>
       <div class="dstatus" id="ifcInfo">No added buildings. Add one from an IFC model, a point cloud or a mesh, or click a building on the map.</div>
@@ -883,7 +894,7 @@ async function openArea(id){
   (S.inflows||[]).forEach(f => areaLayers.push(L.circleMarker(f.at, {radius:6, color:'#fff', weight:2, fillColor:'#185f9e', fillOpacity:1}).addTo(map).bindTooltip(`Inflow: ${f.name}`)));
   (S.exits||[]).forEach(f => areaLayers.push(L.circleMarker(f.at, {radius:6, color:'#fff', weight:2, fillColor:'#16303a', fillOpacity:1}).addTo(map).bindTooltip(`Exit: ${f.name}`)));
   const cellsTxt = `${(AREA.n_cells/1000).toFixed(0)}k cells`;
-  $('areaInfo').textContent = `${AREA.area_km2} km², ${AREA.H} m cells, ${cellsTxt}` + (S.inflows && S.inflows.length ? `, ${S.inflows.length} river inflow${S.inflows.length>1?'s':''}` : '') + (S.culverts ? `, ${S.culverts} culvert${S.culverts>1?'s':''} not modelled` : '') + (S.estuary ? `, ${S.estuary.name.toLowerCase()} included` : '') + (AREA.terrain_source ? `, terrain: ${AREA.terrain_source}` : '') + (S.defences && S.defences.length ? `, ${S.defences.length} flood defence${S.defences.length>1?'s':''}` : '') + (S.tidal && S.tidal.length ? ', tidal Tyne not modelled' : '');
+  $('areaInfo').textContent = `${AREA.area_km2} km², ${AREA.H} m cells, ${cellsTxt}` + (S.inflows && S.inflows.length ? `, ${S.inflows.length} river inflow${S.inflows.length>1?'s':''}` : '') + (S.culverts_routed ? `, ${S.culverts_routed} culvert${S.culverts_routed>1?'s':''} as pipes` : '') + (S.culverts - (S.culverts_routed || 0) > 0 ? `, ${S.culverts - (S.culverts_routed || 0)} culvert${S.culverts - (S.culverts_routed || 0) > 1 ? 's' : ''} not modelled` : '') + (S.estuary ? `, ${S.estuary.name.toLowerCase()} included` : '') + (AREA.terrain_source ? `, terrain: ${AREA.terrain_source}` : '') + (S.defences && S.defences.length ? `, ${S.defences.length} flood defence${S.defences.length>1?'s':''}` : '') + (S.tidal && S.tidal.length ? ', tidal Tyne not modelled' : '');
   $('delArea').hidden = AREA.kind === 'preset'; setKey();
   CMP = null; CMPLABEL = '';
   if(r.baseline){ CMP = {stats:r.baseline}; CMPLABEL = '2012 replay'; }
@@ -2267,7 +2278,50 @@ function dataSummary(){
   const el = $('dataSummary'); if(!el) return;
   el.textContent = `${s ? `Drainage: ${s.pipes} pipes` : 'No drainage network'} · ${n ? `${n} added building${n > 1 ? 's' : ''}` : 'no added buildings'}`;
 }
-$('dataBtn').onclick = () => $('dlgData').showModal();
+/* ---------------- culverts: sizes you know, OpenStreetMap's, or estimates ---------------- */
+const culvSize = c => c.shape === 'box' ? `${c.width} × ${c.height} m box` : `${c.width} m pipe`;
+function renderCulverts(list, mapped){
+  const est = list.filter(c => c.source !== 'your entry' && !c.source.startsWith('OpenStreetMap')).length;
+  $('culvInfo').textContent = !list.length ? (mapped ? `${mapped} culverts are mapped, but none has both ends inside the area.` : 'No culverts found in this area.')
+    : `${list.length} culverts carry water as pipes in every run.` + (est ? ` ${est} have estimated sizes: if you know a culvert's size, enter it below.` : '');
+  $('culvList').innerHTML = '';
+  for(const c of list){
+    const row = document.createElement('div'); row.className = 'culv';
+    row.innerHTML = `<div><b>${c.name}</b> · ${c.length} m long<br>${culvSize(c)} <span class="src ${c.source === 'estimated' ? 'est' : ''}">(${c.source})</span></div>
+      <div><button type="button" class="linkbtn" data-act="show">Show</button> · <button type="button" class="linkbtn" data-act="edit">Edit size</button>${c.source === 'your entry' ? ' · <button type="button" class="linkbtn" data-act="reset">Use estimate</button>' : ''}</div>`;
+    row.querySelector('[data-act=edit]').onclick = () => {
+      if(row.querySelector('form')) return;
+      const f = document.createElement('form');
+      f.innerHTML = `<select class="num" name="shape"><option value="circular">Pipe</option><option value="box">Box</option></select>
+        <label>width <input class="num" name="width" type="number" min="0.1" max="20" step="0.05" value="${c.width}"> m</label>
+        <label class="hgt">height <input class="num" name="height" type="number" min="0.1" max="20" step="0.05" value="${c.height}"> m</label>
+        <button type="submit" class="ghost sm">Save</button><span class="src"></span>`;
+      f.shape.value = c.shape; const sync = () => f.querySelector('.hgt').hidden = f.shape.value !== 'box'; f.shape.onchange = sync; sync();
+      f.onsubmit = async e => { e.preventDefault(); saveCulvert({id: c.id, shape: f.shape.value, width: +f.width.value, height: +f.height.value}, f.querySelector('.src')); };
+      row.appendChild(f);
+    };
+    const rs = row.querySelector('[data-act=reset]'); if(rs) rs.onclick = () => saveCulvert({id: c.id, reset: true});
+    row.querySelector('[data-act=show]').onclick = () => {          // close the dialog and point at the culvert on the map
+      $('dlgData').close(); setView('map');
+      map.flyTo(c.at, 18, {duration: 1});
+      if(window.culvMark) map.removeLayer(culvMark);
+      window.culvMark = L.circleMarker(c.at, {radius: 12, color: '#B07A2A', weight: 3, fill: false}).addTo(map)
+        .bindTooltip(`${c.name}: ${culvSize(c)} (${c.source})`, {permanent: true, direction: 'top'});
+    };
+    $('culvList').appendChild(row);
+  }
+}
+async function saveCulvert(body, msg){
+  const r = await fetch(`/api/culverts/${AREA.id}`, {method: 'POST', body: JSON.stringify(body)}).then(x => x.json());
+  if(r.error){ if(msg) msg.textContent = r.error; return; }
+  renderCulverts(r.culverts, r.culverts.length);
+}
+async function loadCulverts(){
+  if(!AREA) return;
+  const r = await fetch(`/api/culverts/${AREA.id}`).then(x => x.json()).catch(() => null);
+  if(r && !r.error) renderCulverts(r.culverts, r.mapped);
+}
+$('dataBtn').onclick = () => { loadCulverts(); $('dlgData').showModal(); };
 $('dataClose').onclick = () => $('dlgData').close();
 $('sewerRemove2').onclick = async () => {
   if(!confirm('Remove the drainage network from this area?')) return;

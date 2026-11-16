@@ -749,7 +749,7 @@ engine run.
   outline becomes an inflow point (the boundary cells there are coupled to an inflow node, and nearby edges are kept
   closed), and a crossing out of it is always an open edge. Each inflow can be off, steady, or a flood wave (base
   and peak per watercourse, shared timing). Canals and culverted sections are skipped; the River Tyne is tidal and is
-  flagged, not modelled. Flow values are yours to set: there is no gauge data for drawn areas.
+  routed as pipes (see Culverts below). Flow values are yours to set: there is no gauge data for drawn areas.
   A river can also take a recorded hydrograph (mode "recorded": m³/s every 5, 15 or 60 minutes, interpolated and
   held at the last value), for now through scenario parameters in scripts rather than the scenario window.
 - Jesmond Vale preset: 900 x 1,190 m, 73,688 triangles, gauged river inflow and the Ouseburn culvert outlet.
@@ -777,3 +777,15 @@ engine run.
   dummy pipe is included.
 - The engine prints a "CPU marcher" message on start; a CUDA GPU can be used with
   `OPENSWMM_2D_BACKEND=cuda` if your build supports it.
+
+## Culverts in drawn areas
+
+Watercourses that OpenStreetMap marks as culverted (rivers, streams, ditches and drains with tunnel=culvert or
+culvert tags) and whose two ends lie inside the area are modelled as pipes, because the LiDAR terrain shows only
+the embankment above them and would otherwise dam the stream. Each culvert runs from its upstream end to its
+downstream end (OpenStreetMap draws waterways in the direction of flow), with a chamber at each end topped at that
+cell's ground and deep enough for the pipe, linked to the cell with an exchange area matched to the pipe's
+opening. Sizes come, in order, from the size you enter in Area data, from OpenStreetMap's diameter, width and
+height tags, or from an assumed size for the kind of watercourse (ditch or drain 0.6 m pipe, stream 1.2 m pipe,
+river 3 x 2 m box), labelled as estimated. The scenario's culvert blockage narrows every culvert's opening (and
+its chambers) by that share. Culverts with an end outside the area, and canal culverts, are listed but not routed.

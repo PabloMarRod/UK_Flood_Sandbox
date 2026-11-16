@@ -288,7 +288,7 @@ def validate(A, p):
             raise ValueError(f"{nm}: peak flow must be above the base flow")
         if mode != "none":
             q["rivers"].append(dict(id=rid, name=nm, mode=mode, base=base, peak=peak))
-    if not F.get("culvert"): q["blockage"] = 0.0
+    if not F.get("culvert") and not areas.mesh_meta(A).get("culvert_list"): q["blockage"] = 0.0
     if q["inflow"] == "wave" and q["wave_peak"] < q["wave_base"]: raise ValueError("Peak flow must be above the base flow")
     q["duration"] = int(round(q["duration"] / STEP_MIN) * STEP_MIN)
     if q["depth"] > 0 and q["sim"] * 60 < q["duration"]:
@@ -637,7 +637,7 @@ def write_inp(A, q, path, h5name, est=None):
     # a detached dummy pipe keeps 1D routing active, which the 2D module needs
     o += ["", "[JUNCTIONS]", "JX 0 1"] + st1d["junctions"] + ["[OUTFALLS]", "OX -1 FREE"] + nodes + st1d["outfalls"] + \
          (["[STORAGE]"] + st1d["storage"] if st1d["storage"] else []) + [
-          "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
+          "[CONDUITS]", "CX JX OX 10 0.013 0 -1"] + st1d["conduits"] + (sw["conduits"] if sw else []) + (["[ORIFICES]"] + st1d["orifices"] if st1d["orifices"] else []) + \
          (["[PUMPS]"] + st1d["pumps"] if st1d["pumps"] else []) + \
          (["[WEIRS]"] + weirs_all if weirs_all else []) + (["[OUTLETS]"] + outlets_all if outlets_all else []) + ["[XSECTIONS]", "CX CIRCULAR 0.3 0 0 0 1"] + st1d["xsections"]
     if sw and sw["transects"]: o += ["[TRANSECTS]"] + sw["transects"]
@@ -723,14 +723,48 @@ def _warper(A):
 
 
 
+CULVERT_GUESS = {"drain": ("circular", 0.6, 0.6), "ditch": ("circular", 0.6, 0.6),      # shape, width, height (m) assumed
+                 "stream": ("circular", 1.2, 1.2), "river": ("box", 3.0, 2.0)}              # when nothing better is known
+
+
+def _size_tag(v):
+    """A size tag in metres: OpenStreetMap sizes are often in millimetres ("600", "600 mm")."""
+    if v is None: return None
+    t = str(v).lower().replace(",", ".").strip()
+    try:
+        x = float(t.replace("mm", "").replace("cm", "").replace("m", "").strip())
+    except ValueError:
+        return None
+    if "mm" in t or ("m" not in t and x > 20): x /= 1000
+    elif "cm" in t: x /= 100
+    return x if 0.1 <= x <= 20 else None
+
+
+def culvert_size(c, user=None):
+    """(shape, width, height, source) for a culvert: the user's entry, then OpenStreetMap's size tags,
+    then an assumed size for the kind of watercourse."""
+    u = (user or {}).get(c["id"])
+    if u:
+        w = float(u["width"]); return u.get("shape", "circular"), w, float(u.get("height") or w), "your entry"
+    t = c.get("tags", {}); d, w, h = _size_tag(t.get("diameter")), _size_tag(t.get("width")), _size_tag(t.get("height"))
+    if d: return "circular", d, d, "OpenStreetMap"
+    if w and h: return "box", w, h, "OpenStreetMap"
+    shp, gw, gh = CULVERT_GUESS.get(c.get("waterway"), ("circular", 0.9, 0.9))
+    if w: return "box", w, min(gh, w), "OpenStreetMap width, height estimated"
+    return shp, gw, gh, "estimated"
+
+
 def _structures(A, q, lines, cache):
     """Storage tanks, pumps and flood gates as 1D elements linked to the 2D surface. Returns dict of extra
     input-file lines and the triangle tags used for the links."""
     import shapely
     from shapely.geometry import LineString
     ms = [m for m in (q.get("measures") or []) if m["type"] in ("tank", "pump", "gate")]
-    out = dict(junctions=[], outfalls=[], storage=[], orifices=[], pumps=[], xsections=[], curves=[], controls=[], coords=[], nodemap=[])
-    if not ms:
+    out = dict(junctions=[], outfalls=[], storage=[], orifices=[], pumps=[], conduits=[], xsections=[], curves=[], controls=[],
+               coords=[], nodemap=[], culverts=[])
+    mf = cache / "mesh_meta.json"
+    cl = json.loads(mf.read_text()).get("culvert_list", []) if mf.exists() else []
+    if not ms and not cl:
         return out
     H, X0, Y1, NX, NY = A["H"], A["X0"], A["Y1"], A["NX"], A["NY"]
     t0 = lines.index("[2D_TRIANGLES]") + 1; v0 = lines.index("[2D_VERTICES]") + 1
@@ -764,6 +798,25 @@ def _structures(A, q, lines, cache):
         out["coords"].append(f"{node} {X0 + (i + .5) * H:.1f} {Y1 - (j + .5) * H:.1f}")
     def zcell(j, i):
         k = first[(j, i)]; return float(np.mean([vz[int(v)] for v in tri[k][:3]]))
+    # Culverts: a pipe between a chamber at each end, each chamber topped at its cell's ground and deep enough for the
+    # pipe to fit beneath, with the cell-chamber exchange area matched to the pipe's opening (as for gates).
+    b = min(max(q.get("blockage", 0), 0), 95) / 100
+    for k, c in enumerate(cl):
+        shp, w, h, src = culvert_size(c, A.get("culverts_user"))
+        up = free_cell(*c["pts"][0], taken); dn = free_cell(*c["pts"][-1], taken | ({up} if up else set()))
+        if not up or not dn or up == dn:
+            out["culverts"].append(dict(id=c["id"], name=c["name"], shape=shp, width=w, height=h, source=src, modelled=False)); continue
+        zu, zd = zcell(*up), zcell(*dn)
+        # a blockage reduces the open area (a smaller pipe), and the chambers are sized to that opening
+        we, he = (w * (1 - b) ** 0.5, h * (1 - b) ** 0.5) if shp == "circular" else (w, h * (1 - b))
+        area = np.pi * we * we / 4 if shp == "circular" else we * he
+        cu, cd = f"CU{k}", f"CD{k}"; iu, idn = zu - he - 0.1, zd - he - 0.1
+        out["storage"] += [f"{cu} {iu:.3f} {zu - iu:.3f} 0 FUNCTIONAL 0 0 {H * H:.1f} 0 0", f"{cd} {idn:.3f} {zd - idn:.3f} 0 FUNCTIONAL 0 0 {H * H:.1f} 0 0"]
+        link(f"cu{k}", *up, cu, area); link(f"cd{k}", *dn, cd, area)
+        length = max(LineString(c["pts"]).length, H)
+        out["conduits"].append(f"CV{k} {cu} {cd} {length:.1f} 0.015 {iu:.3f} {idn:.3f} 0 0")
+        out["xsections"].append(f"CV{k} CIRCULAR {we:.3f} 0 0 0 1" if shp == "circular" else f"CV{k} RECT_CLOSED {he:.3f} {we:.3f} 0 0 1")
+        out["culverts"].append(dict(id=c["id"], name=c["name"], shape=shp, width=w, height=h, source=src, modelled=True, link=f"CV{k}"))
     rules, n = [], 0
     for m in ms:
         n += 1

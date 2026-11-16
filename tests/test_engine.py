@@ -72,3 +72,31 @@ def test_tank_and_pump_take_water(tmp_path, monkeypatch):
     assert peak.get("OT1", 0) > 0.1                  # water enters the tank
     assert abs(peak.get("P2", 0) - 0.5) < 0.05       # the pump runs at its rate
     assert max(abs(float(l.split()[-1])) for l in rpt.splitlines() if "Continuity Error (%)" in l) < 1.0
+
+
+@pytest.mark.engine
+def test_culvert_carries_river_under_embankment(tmp_path, monkeypatch):
+    """A culvert in a drawn area is a pipe between its two ends: it carries the river under an embankment with the
+    water balance intact, and a blockage cuts the flow."""
+    import re, json, shutil, copy, numpy as np, core, areas
+    import openswmm.engine as eng
+    base = areas.load("jesmond-vale"); d = tmp_path / "area"; shutil.copytree(base["dir"], d)
+    A = copy.deepcopy(base); A["dir"] = str(d); H, X0, Y1 = A["H"], A["X0"], A["Y1"]
+    m = np.load(d / "cache" / "mesh.npz"); cj = np.argwhere(m["is_chan"] & m["keep"]); c0 = np.median(cj, axis=0)
+    pick = lambda dj: (lambda jj: [X0 + (jj[1] + .5) * H, Y1 - (jj[0] + .5) * H])(cj[np.argmin(((cj - (c0 + [dj, 0])) ** 2).sum(1))])
+    up, mid, dn = pick(-12), pick(0), pick(12)
+    meta = json.loads((d / "cache" / "mesh_meta.json").read_text())
+    meta["culvert_list"] = [dict(id="t1", name="test", waterway="stream", pts=[up, mid, dn], tags={})]
+    (d / "cache" / "mesh_meta.json").write_text(json.dumps(meta)); A["culverts_user"] = {"t1": {"shape": "box", "width": 3, "height": 2}}
+    ms = [dict(type="embankment", pts=[[mid[0] - 80, mid[1]], [mid[0] + 80, mid[1]]], height=3.0, width=6)]
+    monkeypatch.chdir(tmp_path)
+    def run(blockage):
+        q, _ = core.validate(A, dict(depth=0, duration=60, profile="centre", sim=1.0, inflow="base", base_q=4, measures=ms, use_measures=True, blockage=blockage))
+        core.write_inp(A, q, tmp_path / "m.inp", "m.h5")
+        eng.run_with_callback(str(tmp_path / "m.inp"), str(tmp_path / "m.rpt"), str(tmp_path / "m.out"), lambda f: None)
+        rpt = (tmp_path / "m.rpt").read_text()
+        flow = [float(l.split()[2]) for l in rpt.splitlines() if re.match(r"\s+CV\d+\s+CONDUIT\s+[\d.]", l)]
+        return flow[0], max(abs(float(l.split()[-1])) for l in rpt.splitlines() if "Continuity Error (%)" in l)
+    q_open, err_open = run(0); q_blocked, err_blocked = run(90)
+    assert q_open > 3.0 and err_open < 1.0             # carries the river (4 m3/s)
+    assert q_blocked < 0.4 * q_open and err_blocked < 1.0

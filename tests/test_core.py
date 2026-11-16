@@ -155,3 +155,12 @@ def test_gate_closes_at_depth_over_upstream_ground(preset, tmp_path):
     core.write_inp(preset, q, tmp_path / "m.inp", "m.h5"); t = (tmp_path / "m.inp").read_text()
     node, thr = re.search(r"IF NODE (\S+) DEPTH > ([\d.]+)", t).groups()
     assert float(thr) >= 0.4 + 0.3 - 1e-6                     # at least the old offset, plus any rise to side A's ground
+
+
+def test_culvert_size_order():
+    """Your entry, then OpenStreetMap's size tags (millimetres understood), then an estimate by watercourse."""
+    c = dict(id="w1", waterway="stream", tags={"diameter": "600"})
+    assert core.culvert_size(c) == ("circular", 0.6, 0.6, "OpenStreetMap")
+    assert core.culvert_size(dict(c, tags={"width": "2", "height": "1.5 m"}))[:3] == ("box", 2.0, 1.5)
+    assert core.culvert_size(dict(c, tags={}))[3] == "estimated"
+    assert core.culvert_size(c, {"w1": {"shape": "box", "width": 3, "height": 2}}) == ("box", 3.0, 2.0, "your entry")
