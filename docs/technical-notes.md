@@ -303,7 +303,7 @@ double-click or press Enter (Backspace undoes a point, Esc cancels). Set the siz
 | Green roofs | an area round the buildings | those roofs hold the first 15 mm (adjustable 5 to 40) and release the rest through a 30-minute store |
 | Storage tank | one point (its inlet); volume, maximum inflow | an inlet junction linked to that cell drains into a sealed storage unit through an orifice sized for the inflow rate; when full, water backs up to the surface |
 | Pump | intake point, then discharge point (or Enter for "out of the area"); rate, start depth | a 20 m2 wet well linked to the intake cell; the pump runs at the rate once the well is at the start depth, onto the discharge cell or out of the model |
-| Flood gate | a line; height; closes at a time, at a water depth, stays open or stays closed | a wall in the ground with one opening per cell along it (an orifice between junctions linked to cells either side, opening = cell width x height); control rules close every opening at the set time or when water beside the gate reaches the set depth |
+| Flood gate | a line; height; closes at a time, at a water depth, stays open or stays closed | a wall in the ground with one opening per cell along it: a chamber either side, its top at that side's ground, joined by a 0.5 x 1 m opening (about 2 m³/s each when open), so an open gate acts as a set of culverts rather than a gap. A depth-operated gate closes when the water over the upstream ground at any opening reaches the set depth, and stays closed |
 
 Surface measures only change ordinary ground (not rivers, roof downpipes, inflows or the burst main). Infiltration
 values are indicative of well-maintained features at "normal" ground, scaled by 1.3 for dry and 0.5 for wet ground;

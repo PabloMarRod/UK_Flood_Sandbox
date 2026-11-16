@@ -16,6 +16,7 @@ STEP_MIN = 5                      # rainfall step (min)
 GAUGE_START = "2012-06-28T15:00"  # rain onset on Thunder Thursday (UTC)
 MAX_RUN_S = 600                   # warn about runs estimated above 10 minutes
 MAX_RUN_HARD_S = 3600             # refuse runs estimated above 60 minutes
+GATE_OPEN_H, GATE_OPEN_W = 0.5, 1.0     # m, each gate opening (one per cell along the gate): passes about 2 m3/s
 QUIET_W = 0.4                     # an hour with no storm, burst or flood wave costs about 40% of a storm hour (measured)
 CALIB = ROOT / "runs" / "calibration.json"
 DEFAULT_K = 4.5e-4                # seconds per cell per simulated hour (single core, measured in development)
@@ -801,13 +802,18 @@ def _structures(A, q, lines, cache):
                 cb = free_cell(p.x - nx * H * 2.2, p.y - ny * H * 2.2, taken, lambda x, y: near_wall(x, y) or side(x, y) >= 0)
                 if not ca or not cb or ca == cb: continue
                 ga, gb, gid = f"GA{n}_{len(pairs)}", f"GB{n}_{len(pairs)}", f"GO{n}_{len(pairs)}"
-                za, zb = zcell(*ca), zcell(*cb); base = min(za, zb) - 0.3
-                out["junctions"] += [f"{ga} {base:.3f} {m['height'] + 1:.2f} 0 0 0", f"{gb} {base:.3f} {m['height'] + 1:.2f} 0 0 0"]
-                opening = H * (m["height"] + 0.3)                       # the full opening, so an open gate passes water freely
-                link(f"g{n}a{len(pairs)}", *ca, ga, opening); link(f"g{n}b{len(pairs)}", *cb, gb, opening)
-                out["orifices"].append(f"{gid} {ga} {gb} SIDE {base:.3f} 0.65 NO")
-                out["xsections"].append(f"{gid} RECT_CLOSED {m['height'] + 0.3:.2f} {H:.2f} 0 0")
-                pairs.append((gid, ga, za - base))           # junction depth when water just covers the upstream ground
+                # The engine exchanges water between a cell and a node only if the node's links fit beneath its top,
+                # and large openings between small nodes oscillate. So each opening is a chamber either side with its
+                # top at that side's ground, joined by a modest opening (GATE_OPEN_H x GATE_OPEN_W) that fits beneath
+                # it, with the cell-chamber exchange area matched to the opening (tested: continuity well under 1%).
+                za, zb = zcell(*ca), zcell(*cb); oh, ow = GATE_OPEN_H, min(GATE_OPEN_W, H)
+                inv = min(za, zb) - oh - 0.1
+                out["storage"] += [f"{ga} {inv:.3f} {za - inv:.3f} 0 FUNCTIONAL 0 0 {H * H:.1f} 0 0",
+                                   f"{gb} {inv:.3f} {zb - inv:.3f} 0 FUNCTIONAL 0 0 {H * H:.1f} 0 0"]
+                link(f"g{n}a{len(pairs)}", *ca, ga, oh * ow); link(f"g{n}b{len(pairs)}", *cb, gb, oh * ow)
+                out["orifices"].append(f"{gid} {ga} {gb} SIDE {inv:.3f} 0.65 NO")
+                out["xsections"].append(f"{gid} RECT_CLOSED {oh:.2f} {ow:.2f} 0 0")
+                pairs.append((gid, ga, za - inv))            # chamber depth when water just covers the upstream ground
             if not pairs: continue
             if m["mode"] == "closed":
                 rules.append(f"RULE R{n}\nIF SIMULATION TIME >= 0\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs))
@@ -816,8 +822,9 @@ def _structures(A, q, lines, cache):
                 rules.append(f"RULE R{n}\nIF SIMULATION TIME >= {hrs:.3f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs)
                              + "\nELSE " + "\nAND ".join(f"ORIFICE {g} SETTING = 1" for g, *_ in pairs))
             elif m["mode"] == "level":
-                g0, a0, off = pairs[0]                   # close once the water is close_level deep over the upstream ground
-                rules.append(f"RULE R{n}\nIF NODE {a0} DEPTH > {m['close_level'] + off:.2f}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs))
+                # close once the water is close_level deep over the upstream ground at any of its openings
+                cond = "\nOR ".join(f"NODE {a} DEPTH > {m['close_level'] + off:.2f}" for _, a, off in pairs)
+                rules.append(f"RULE R{n}\nIF {cond}\nTHEN " + "\nAND ".join(f"ORIFICE {g} SETTING = 0" for g, *_ in pairs))
     out["controls"] = rules
     for k, parts in enumerate(tri): lines[t0 + k] = " ".join(parts)
     return out
